@@ -1,0 +1,120 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SocialPlatform {
+  INSTAGRAM
+  YOUTUBE
+  TIKTOK
+  X
+  FACEBOOK
+  OTHER
+}
+
+enum DeviceType {
+  IOS
+  ANDROID
+  DESKTOP
+  OTHER
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+model Influencer {
+  id        String         @id @default(cuid())
+  name      String
+  handle    String?
+  email     String?
+  platform  SocialPlatform @default(INSTAGRAM)
+  followers Int?
+  notes     String?
+  isActive  Boolean        @default(true)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  link    Link?
+  coupons Coupon[]
+
+  @@index([createdAt])
+}
+
+/// The influencer's tracking link: /r/{code} -> DOWNLOAD_URL
+model Link {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  influencerId String   @unique
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  influencer Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+  clicks     Click[]
+}
+
+model Click {
+  id        String     @id @default(cuid())
+  linkId    String
+  createdAt DateTime   @default(now())
+  device    DeviceType
+  os        String?
+  browser   String?
+  country   String?
+  referrer  String?
+  /// Salted hash of IP + user agent, used for unique-visitor counts.
+  visitorId String
+  isBot     Boolean    @default(false)
+
+  link Link @relation(fields: [linkId], references: [id], onDelete: Cascade)
+
+  @@index([linkId, createdAt])
+  @@index([createdAt])
+}
+
+model Coupon {
+  id              String       @id @default(cuid())
+  code            String       @unique
+  description     String?
+  discountType    DiscountType @default(PERCENTAGE)
+  discountValue   Decimal      @db.Decimal(10, 2)
+  /// Optional minimum order amount for the coupon to apply.
+  minOrderAmount  Decimal?     @db.Decimal(10, 2)
+  /// Total redemptions allowed across all users (null = unlimited).
+  maxRedemptions  Int?
+  /// Redemptions allowed per user (null = unlimited).
+  perUserLimit    Int?
+  redemptionCount Int          @default(0)
+  startsAt        DateTime?
+  expiresAt       DateTime?
+  isActive        Boolean      @default(true)
+  influencerId    String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  influencer  Influencer?        @relation(fields: [influencerId], references: [id], onDelete: SetNull)
+  redemptions CouponRedemption[]
+
+  @@index([influencerId])
+}
+
+model CouponRedemption {
+  id              String   @id @default(cuid())
+  couponId        String
+  /// The user's id in your app.
+  userId          String
+  orderId         String?
+  orderAmount     Decimal? @db.Decimal(10, 2)
+  discountApplied Decimal  @db.Decimal(10, 2)
+  createdAt       DateTime @default(now())
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  @@index([couponId, userId])
+  @@unique([couponId, orderId])
+}

@@ -1,0 +1,160 @@
+import { Suspense } from "react";
+import Link from "next/link";
+import { connection } from "next/server";
+import { PlusIcon, UsersIcon } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
+import { CopyButton } from "@/components/copy-button";
+import { InfluencerActions } from "@/components/influencers/influencer-actions";
+import { InfluencerFormDialog } from "@/components/influencers/influencer-form-dialog";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { getClickTotalsByInfluencer } from "@/lib/analytics";
+import { PLATFORM_LABELS, formatCompact, formatNumber, initials } from "@/lib/format";
+import { prisma } from "@/lib/prisma";
+import { getBaseUrl, trackingUrl } from "@/lib/tracking";
+
+export default function InfluencersPage() {
+  return (
+    <Suspense
+      fallback={
+        <>
+          <PageHeader title="Influencers" description="Everyone promoting your apps, with their tracking links." />
+          <Skeleton className="h-96 rounded-xl" />
+        </>
+      }
+    >
+      <InfluencerList />
+    </Suspense>
+  );
+}
+
+async function InfluencerList() {
+  await connection();
+  const [influencers, totals, baseUrl] = await Promise.all([
+    prisma.influencer.findMany({ orderBy: { createdAt: "desc" }, include: { link: true } }),
+    getClickTotalsByInfluencer(),
+    getBaseUrl(),
+  ]);
+
+  const addButton = (
+    <InfluencerFormDialog
+      trigger={
+        <Button>
+          <PlusIcon data-icon="inline-start" />
+          Add influencer
+        </Button>
+      }
+    />
+  );
+
+  return (
+    <>
+      <PageHeader title="Influencers" description="Everyone promoting your apps, with their tracking links.">
+        {influencers.length > 0 && addButton}
+      </PageHeader>
+
+      {influencers.length === 0 ? (
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <UsersIcon />
+            </EmptyMedia>
+            <EmptyTitle>No influencers yet</EmptyTitle>
+            <EmptyDescription>
+              Add someone and they&apos;ll get a unique download link you can share with them.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>{addButton}</EmptyContent>
+        </Empty>
+      ) : (
+        <Card className="py-0">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="pl-4">Influencer</TableHead>
+                <TableHead className="hidden md:table-cell">Platform</TableHead>
+                <TableHead>Tracking link</TableHead>
+                <TableHead className="hidden text-right sm:table-cell">Android</TableHead>
+                <TableHead className="hidden text-right sm:table-cell">iOS</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+                <TableHead className="hidden text-right md:table-cell">Last 7 days</TableHead>
+                <TableHead className="hidden lg:table-cell">Status</TableHead>
+                <TableHead className="w-10 pr-4" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {influencers.map((inf) => {
+                const link = inf.link;
+                const url = link ? trackingUrl(baseUrl, link.code) : null;
+                const total = totals.get(inf.id);
+                return (
+                  <TableRow key={inf.id}>
+                    <TableCell className="pl-4">
+                      <Link href={`/influencers/${inf.id}`} className="flex items-center gap-3">
+                        <Avatar>
+                          <AvatarFallback>{initials(inf.name)}</AvatarFallback>
+                        </Avatar>
+                        <span className="min-w-0">
+                          <span className="block max-w-48 truncate font-medium hover:underline">{inf.name}</span>
+                          <span className="block max-w-48 truncate text-xs text-muted-foreground">
+                            {inf.handle ? `@${inf.handle}` : PLATFORM_LABELS[inf.platform]}
+                            {inf.followers != null && ` · ${formatCompact(inf.followers)} followers`}
+                          </span>
+                        </span>
+                      </Link>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <Badge variant="outline">{PLATFORM_LABELS[inf.platform]}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {link && url ? (
+                        <div className="flex items-center gap-1">
+                          <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs">/r/{link.code}</code>
+                          <CopyButton value={url} />
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No link</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="hidden text-right tabular-nums sm:table-cell">
+                      {formatNumber(total?.android ?? 0)}
+                    </TableCell>
+                    <TableCell className="hidden text-right tabular-nums sm:table-cell">
+                      {formatNumber(total?.ios ?? 0)}
+                    </TableCell>
+                    <TableCell className="text-right font-medium tabular-nums">
+                      {formatNumber(total?.clicks ?? 0)}
+                    </TableCell>
+                    <TableCell className="hidden text-right tabular-nums text-muted-foreground md:table-cell">
+                      {formatNumber(total?.last7 ?? 0)}
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      {inf.isActive ? (
+                        <Badge variant="secondary">
+                          <span className="size-1.5 rounded-full bg-primary" />
+                          Active
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-muted-foreground">
+                          Paused
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="pr-4">
+                      <InfluencerActions id={inf.id} name={inf.name} isActive={inf.isActive} />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+    </>
+  );
+}
