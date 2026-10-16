@@ -66,7 +66,7 @@ export function StatCard({
                 ) : change < 0 ? (
                   <ArrowDownRightIcon className="size-3" />
                 ) : null}
-                {Math.abs(change)}%
+                {Math.abs(change) > 999 ? ">999" : Math.abs(change)}%
               </>
             )}
           </span>

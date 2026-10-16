@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/lib/generated/prisma/client";
+import { PAGE_SIZE, type ListSort, type ListStatus } from "@/lib/list-params";
 
 export const RANGES = { "7d": 7, "30d": 30, "90d": 90 } as const;
 export type RangeKey = keyof typeof RANGES;
@@ -21,72 +23,61 @@ function rangeBounds(range: RangeKey) {
 
 type Filter = { influencerId?: string };
 
-function clickWhere(from: Date, to: Date | undefined, filter: Filter) {
-  return {
-    isBot: false,
-    createdAt: { gte: from, ...(to ? { lt: to } : {}) },
-    ...(filter.influencerId ? { link: { influencerId: filter.influencerId } } : {}),
-  };
+/** SQL fragment that limits clicks (alias c) to one influencer when a filter is given. */
+function influencerClause(filter: Filter) {
+  return filter.influencerId
+    ? Prisma.sql`AND c."linkId" IN (SELECT id FROM "Link" WHERE "influencerId" = ${filter.influencerId})`
+    : Prisma.empty;
 }
 
-async function countUnique(from: Date, to: Date | undefined, filter: Filter) {
-  const rows = await prisma.click.groupBy({
-    by: ["visitorId"],
-    where: clickWhere(from, to, filter),
-  });
-  return rows.length;
-}
+// ---------- Headline numbers ----------
 
-/** Android and iOS are tracked on their own; everything else (Windows, Mac, …) counts as "others". */
-async function countByDevice(from: Date, to: Date | undefined, filter: Filter) {
-  const rows = await prisma.click.groupBy({
-    by: ["device", "os"],
-    where: clickWhere(from, to, filter),
-    _count: { _all: true },
-  });
-  const sum = (match: (r: (typeof rows)[number]) => boolean) =>
-    rows.filter(match).reduce((total, r) => total + r._count._all, 0);
-  const android = sum((r) => r.device === "ANDROID");
-  const ios = sum((r) => r.device === "IOS");
-  const total = sum(() => true);
-  return {
-    total,
-    android,
-    ios,
-    others: total - android - ios,
-    windows: sum((r) => r.os === "Windows"),
-    mac: sum((r) => r.os === "macOS"),
-  };
-}
+type SummaryRow = {
+  clicks: number;
+  prevClicks: number;
+  android: number;
+  prevAndroid: number;
+  ios: number;
+  prevIos: number;
+  windows: number;
+  mac: number;
+  unique: number;
+  prevUnique: number;
+  clicksToday: number;
+};
 
+/**
+ * Every headline number for the period and the period before it, in a single query.
+ * Android and iOS are tracked on their own; everything else (Windows, Mac, …) counts as "others".
+ */
 export async function getSummary(range: RangeKey, filter: Filter = {}) {
   const { start, prevStart } = rangeBounds(range);
   const today = startOfUtcDay(new Date());
 
-  const [current, previous, unique, prevUnique, clicksToday] = await Promise.all([
-    countByDevice(start, undefined, filter),
-    countByDevice(prevStart, start, filter),
-    countUnique(start, undefined, filter),
-    countUnique(prevStart, start, filter),
-    prisma.click.count({ where: clickWhere(today, undefined, filter) }),
-  ]);
+  const [row] = await prisma.$queryRaw<SummaryRow[]>`
+    SELECT
+      count(*) FILTER (WHERE cur)::int                                  AS "clicks",
+      count(*) FILTER (WHERE NOT cur)::int                              AS "prevClicks",
+      count(*) FILTER (WHERE cur AND c.device = 'ANDROID')::int         AS "android",
+      count(*) FILTER (WHERE NOT cur AND c.device = 'ANDROID')::int     AS "prevAndroid",
+      count(*) FILTER (WHERE cur AND c.device = 'IOS')::int             AS "ios",
+      count(*) FILTER (WHERE NOT cur AND c.device = 'IOS')::int         AS "prevIos",
+      count(*) FILTER (WHERE cur AND c.os = 'Windows')::int             AS "windows",
+      count(*) FILTER (WHERE cur AND c.os = 'macOS')::int               AS "mac",
+      count(DISTINCT c."visitorId") FILTER (WHERE cur)::int             AS "unique",
+      count(DISTINCT c."visitorId") FILTER (WHERE NOT cur)::int         AS "prevUnique",
+      count(*) FILTER (WHERE c."createdAt" >= ${today})::int            AS "clicksToday"
+    FROM (
+      SELECT *, "createdAt" >= ${start} AS cur FROM "Click"
+    ) c
+    WHERE c."isBot" = false AND c."createdAt" >= ${prevStart} ${influencerClause(filter)}`;
 
-  return {
-    clicks: current.total,
-    prevClicks: previous.total,
-    android: current.android,
-    prevAndroid: previous.android,
-    ios: current.ios,
-    prevIos: previous.ios,
-    others: current.others,
-    prevOthers: previous.others,
-    windows: current.windows,
-    mac: current.mac,
-    unique,
-    prevUnique,
-    clicksToday,
-  };
+  const others = row.clicks - row.android - row.ios;
+  const prevOthers = row.prevClicks - row.prevAndroid - row.prevIos;
+  return { ...row, others, prevOthers };
 }
+
+// ---------- Daily series ----------
 
 export type DailyPoint = {
   date: string;
@@ -98,42 +89,29 @@ export type DailyPoint = {
   signups: number;
 };
 
-type DailyRow = { day: Date; clicks: number; android: number; ios: number; unique: number };
-
 export async function getDailyClicks(range: RangeKey, filter: Filter = {}): Promise<DailyPoint[]> {
   const { days, start } = rangeBounds(range);
 
-  const rows = filter.influencerId
-    ? await prisma.$queryRaw<DailyRow[]>`
-        SELECT date_trunc('day', c."createdAt") AS day,
-               count(*)::int AS clicks,
-               count(*) FILTER (WHERE c.device = 'ANDROID')::int AS android,
-               count(*) FILTER (WHERE c.device = 'IOS')::int AS ios,
-               count(DISTINCT c."visitorId")::int AS "unique"
-        FROM "Click" c
-        JOIN "Link" l ON l.id = c."linkId"
-        WHERE c."isBot" = false AND c."createdAt" >= ${start} AND l."influencerId" = ${filter.influencerId}
-        GROUP BY 1`
-    : await prisma.$queryRaw<DailyRow[]>`
-        SELECT date_trunc('day', c."createdAt") AS day,
-               count(*)::int AS clicks,
-               count(*) FILTER (WHERE c.device = 'ANDROID')::int AS android,
-               count(*) FILTER (WHERE c.device = 'IOS')::int AS ios,
-               count(DISTINCT c."visitorId")::int AS "unique"
-        FROM "Click" c
-        WHERE c."isBot" = false AND c."createdAt" >= ${start}
-        GROUP BY 1`;
+  const [rows, signupRows] = await Promise.all([
+    prisma.$queryRaw<{ day: Date; clicks: number; android: number; ios: number; unique: number }[]>`
+      SELECT date_trunc('day', c."createdAt") AS day,
+             count(*)::int AS clicks,
+             count(*) FILTER (WHERE c.device = 'ANDROID')::int AS android,
+             count(*) FILTER (WHERE c.device = 'IOS')::int AS ios,
+             count(DISTINCT c."visitorId")::int AS "unique"
+      FROM "Click" c
+      WHERE c."isBot" = false AND c."createdAt" >= ${start} ${influencerClause(filter)}
+      GROUP BY 1`,
+    prisma.signupCount.groupBy({
+      by: ["date"],
+      where: signupWhere(start, undefined, filter),
+      _sum: { count: true },
+    }),
+  ]);
 
-  const signupRows = await prisma.signupCount.groupBy({
-    by: ["date"],
-    where: signupWhere(start, undefined, filter),
-    _sum: { count: true },
-  });
-  const signupsByDay = new Map(
-    signupRows.map((r) => [r.date.toISOString().slice(0, 10), r._sum.count ?? 0]),
-  );
-
+  const signupsByDay = new Map(signupRows.map((r) => [r.date.toISOString().slice(0, 10), r._sum.count ?? 0]));
   const byDay = new Map(rows.map((r) => [new Date(r.day).toISOString().slice(0, 10), r]));
+
   return Array.from({ length: days }, (_, i) => {
     const date = new Date(start.getTime() + i * 86_400_000).toISOString().slice(0, 10);
     const row = byDay.get(date);
@@ -152,6 +130,8 @@ export async function getDailyClicks(range: RangeKey, filter: Filter = {}): Prom
   });
 }
 
+// ---------- Breakdowns ----------
+
 export async function getTopValues(
   field: "country" | "referrer" | "browser",
   range: RangeKey,
@@ -161,7 +141,11 @@ export async function getTopValues(
   const { start } = rangeBounds(range);
   const rows = await prisma.click.groupBy({
     by: [field],
-    where: clickWhere(start, undefined, filter),
+    where: {
+      isBot: false,
+      createdAt: { gte: start },
+      ...(filter.influencerId ? { link: { influencerId: filter.influencerId } } : {}),
+    },
     _count: { _all: true },
     orderBy: { _count: { id: "desc" } },
     take: limit,
@@ -169,51 +153,129 @@ export async function getTopValues(
   return rows.map((r) => ({ label: r[field] ?? "Unknown", clicks: r._count._all }));
 }
 
-export async function getTopInfluencers(range: RangeKey, limit = 5) {
+// ---------- Leaderboard ----------
+
+export type LeaderboardRow = {
+  id: string;
+  name: string;
+  handle: string | null;
+  clicks: number;
+  android: number;
+  ios: number;
+  others: number;
+  signups: number;
+};
+
+/** Influencers ranked by clicks in the period, with their platform split and signups. */
+export async function getLeaderboard(range: RangeKey, limit = 10) {
   const { start } = rangeBounds(range);
-  return prisma.$queryRaw<
-    {
-      id: string;
-      name: string;
-      handle: string | null;
-      platform: string;
-      clicks: number;
-      android: number;
-      ios: number;
-      others: number;
-      signups: number;
-    }[]
-  >`
-    SELECT i.id, i.name, i.handle, i.platform::text AS platform,
-           count(c.id)::int AS clicks,
-           count(c.id) FILTER (WHERE c.device = 'ANDROID')::int AS android,
-           count(c.id) FILTER (WHERE c.device = 'IOS')::int AS ios,
-           count(c.id) FILTER (WHERE c.device NOT IN ('ANDROID', 'IOS'))::int AS others,
-           COALESCE((SELECT sum(s.count) FROM "SignupCount" s
-                     WHERE s."influencerId" = i.id AND s.date >= ${start}::date), 0)::int AS signups
+  return prisma.$queryRaw<LeaderboardRow[]>`
+    WITH clicks AS (
+      SELECT l."influencerId",
+             count(*)::int AS clicks,
+             count(*) FILTER (WHERE c.device = 'ANDROID')::int AS android,
+             count(*) FILTER (WHERE c.device = 'IOS')::int AS ios
+      FROM "Click" c
+      JOIN "Link" l ON l.id = c."linkId"
+      WHERE c."isBot" = false AND c."createdAt" >= ${start}
+      GROUP BY 1
+    ),
+    signups AS (
+      SELECT "influencerId", sum(count)::int AS signups
+      FROM "SignupCount"
+      WHERE date >= ${start}::date
+      GROUP BY 1
+    )
+    SELECT i.id, i.name, i.handle,
+           COALESCE(c.clicks, 0) AS clicks,
+           COALESCE(c.android, 0) AS android,
+           COALESCE(c.ios, 0) AS ios,
+           COALESCE(c.clicks - c.android - c.ios, 0) AS others,
+           COALESCE(s.signups, 0) AS signups
     FROM "Influencer" i
-    JOIN "Link" l ON l."influencerId" = i.id
-    JOIN "Click" c ON c."linkId" = l.id AND c."isBot" = false AND c."createdAt" >= ${start}
-    GROUP BY i.id
-    ORDER BY clicks DESC
+    LEFT JOIN clicks c ON c."influencerId" = i.id
+    LEFT JOIN signups s ON s."influencerId" = i.id
+    WHERE c.clicks > 0 OR s.signups > 0
+    ORDER BY clicks DESC, signups DESC, i.name
     LIMIT ${limit}`;
 }
 
-/** All-time click totals per influencer, for the influencers table. */
-export async function getClickTotalsByInfluencer() {
-  const rows = await prisma.$queryRaw<
-    { influencerId: string; clicks: number; android: number; ios: number; others: number; last7: number }[]
-  >`
-    SELECT l."influencerId",
-           count(c.id)::int AS clicks,
-           count(c.id) FILTER (WHERE c.device = 'ANDROID')::int AS android,
-           count(c.id) FILTER (WHERE c.device = 'IOS')::int AS ios,
-           count(c.id) FILTER (WHERE c.device NOT IN ('ANDROID', 'IOS'))::int AS others,
-           count(c.id) FILTER (WHERE c."createdAt" >= now() - interval '7 days')::int AS last7
-    FROM "Link" l
-    JOIN "Click" c ON c."linkId" = l.id AND c."isBot" = false
-    GROUP BY l."influencerId"`;
-  return new Map(rows.map((r) => [r.influencerId, r]));
+// ---------- Influencer list (search, filter, sort, pages) ----------
+
+export type InfluencerListRow = {
+  id: string;
+  name: string;
+  handle: string | null;
+  platform: string;
+  followers: number | null;
+  referralCode: string;
+  periodStart: Date | null;
+  periodEnd: Date | null;
+  isActive: boolean;
+  linkId: string | null;
+  linkCode: string | null;
+  linkActive: boolean | null;
+  last7: number;
+};
+
+export async function getInfluencerList(opts: {
+  q: string;
+  status: ListStatus;
+  sort: ListSort;
+  page: number;
+}) {
+  const term = opts.q.trim().replace(/^@/, "");
+  const like = `%${term.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+
+  const where = Prisma.sql`WHERE true
+    ${term ? Prisma.sql`AND (i.name ILIKE ${like} OR i.handle ILIKE ${like} OR i."referralCode" ILIKE ${like} OR l.code ILIKE ${like})` : Prisma.empty}
+    ${opts.status === "active" ? Prisma.sql`AND i."isActive" = true` : Prisma.empty}
+    ${opts.status === "paused" ? Prisma.sql`AND i."isActive" = false` : Prisma.empty}`;
+
+  const orderBy =
+    opts.sort === "name"
+      ? Prisma.sql`ORDER BY lower(i.name), i."createdAt" DESC`
+      : opts.sort === "clicks"
+        ? Prisma.sql`ORDER BY last7 DESC, i."createdAt" DESC`
+        : Prisma.sql`ORDER BY i."createdAt" DESC`;
+
+  const offset = (Math.max(opts.page, 1) - 1) * PAGE_SIZE;
+
+  const [rows, [{ total }], statusCounts] = await Promise.all([
+    prisma.$queryRaw<InfluencerListRow[]>`
+      WITH recent AS (
+        SELECT c."linkId", count(*)::int AS last7
+        FROM "Click" c
+        WHERE c."isBot" = false AND c."createdAt" >= now() - interval '7 days'
+        GROUP BY 1
+      )
+      SELECT i.id, i.name, i.handle, i.platform::text AS platform, i.followers, i."referralCode",
+             i."periodStart", i."periodEnd", i."isActive",
+             l.id AS "linkId", l.code AS "linkCode", l."isActive" AS "linkActive",
+             COALESCE(r.last7, 0) AS last7
+      FROM "Influencer" i
+      LEFT JOIN "Link" l ON l."influencerId" = i.id
+      LEFT JOIN recent r ON r."linkId" = l.id
+      ${where}
+      ${orderBy}
+      LIMIT ${PAGE_SIZE} OFFSET ${offset}`,
+    prisma.$queryRaw<{ total: number }[]>`
+      SELECT count(*)::int AS total
+      FROM "Influencer" i
+      LEFT JOIN "Link" l ON l."influencerId" = i.id
+      ${where}`,
+    prisma.influencer.groupBy({ by: ["isActive"], _count: { _all: true } }),
+  ]);
+
+  const active = statusCounts.find((s) => s.isActive)?._count._all ?? 0;
+  const paused = statusCounts.find((s) => !s.isActive)?._count._all ?? 0;
+
+  return {
+    rows,
+    total,
+    pageCount: Math.max(1, Math.ceil(total / PAGE_SIZE)),
+    counts: { all: active + paused, active, paused },
+  };
 }
 
 // ---------- Referral signups (entered by hand from the referral portal) ----------

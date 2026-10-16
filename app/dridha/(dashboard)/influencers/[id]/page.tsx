@@ -2,7 +2,18 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
-import { AppleIcon, ChevronLeftIcon, MonitorIcon, MousePointerClickIcon, PencilIcon, PlusIcon, SmartphoneIcon, UserPlusIcon } from "lucide-react";
+import {
+  AppleIcon,
+  ChevronLeftIcon,
+  LinkIcon,
+  MonitorIcon,
+  MousePointerClickIcon,
+  PencilIcon,
+  PlusIcon,
+  SmartphoneIcon,
+  TicketIcon,
+  UserPlusIcon,
+} from "lucide-react";
 import { BreakdownList } from "@/components/analytics/breakdown-list";
 import { DailyBarChart } from "@/components/analytics/daily-bar-chart";
 import { RangeTabs } from "@/components/analytics/range-tabs";
@@ -11,10 +22,13 @@ import { CopyButton } from "@/components/copy-button";
 import { InfluencerActions } from "@/components/influencers/influencer-actions";
 import { InfluencerFormDialog } from "@/components/influencers/influencer-form-dialog";
 import { ProfileButton } from "@/components/influencers/profile-button";
-import { DeleteSignupCountButton, SignupCountDialog } from "@/components/influencers/signup-count-dialog";
+import { InfluencerAvatar } from "@/components/influencers/influencer-avatar";
+import {
+  DeleteSignupCountButton,
+  SignupCountDialog,
+} from "@/components/influencers/signup-count-dialog";
 import { LinkActiveSwitch } from "@/components/influencers/link-controls";
 import { PlatformSplit } from "@/components/analytics/platform-split";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,7 +65,6 @@ import {
   formatDate,
   formatNumber,
   formatPeriod,
-  initials,
   OTHERS_LABEL,
   PERIOD_BADGE,
   periodStatus,
@@ -122,7 +135,7 @@ async function InfluencerDetail({
     prisma.click.findMany({
       where: { isBot: false, link: { influencerId: id } },
       orderBy: { createdAt: "desc" },
-      take: 15,
+      take: 50,
     }),
     getSignupSummary(range, filter),
     prisma.signupCount
@@ -138,18 +151,22 @@ async function InfluencerDetail({
   if (!influencer) notFound();
   const link = influencer.link;
   const period = formatPeriod(influencer.periodStart, influencer.periodEnd);
-  const periodState = periodStatus(influencer.periodStart, influencer.periodEnd);
+  const periodState = periodStatus(
+    influencer.periodStart,
+    influencer.periodEnd,
+  );
   const url = link ? trackingUrl(baseUrl, link.code) : null;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-4">
-          <Avatar size="lg" className="size-12">
-            <AvatarFallback className="text-base">
-              {initials(influencer.name)}
-            </AvatarFallback>
-          </Avatar>
+          <InfluencerAvatar
+            name={influencer.name}
+            seed={influencer.id}
+            size="lg"
+            className="size-12 text-base"
+          />
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2">
               <h1 className="truncate text-2xl font-semibold tracking-tight">
@@ -157,7 +174,10 @@ async function InfluencerDetail({
               </h1>
               {!influencer.isActive && <Badge variant="outline">Paused</Badge>}
               {period && periodState && (
-                <Badge variant="secondary" className={PERIOD_BADGE[periodState]}>
+                <Badge
+                  variant="secondary"
+                  className={PERIOD_BADGE[periodState]}
+                >
                   {periodState}
                 </Badge>
               )}
@@ -198,55 +218,61 @@ async function InfluencerDetail({
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Share</CardTitle>
-          <CardDescription>
-            The link opens {DOWNLOAD_URL.replace(/^https?:\/\//, "")}, which
-            sends Android and iOS users to the right store. Signups with the
-            referral code come from the referral portal.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {link && url ? (
-            <div className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center">
-              <div className="min-w-0 flex-1 space-y-1">
-                <p className="truncate font-mono text-sm">{url}</p>
-                {(!link.isActive || !influencer.isActive) && (
-                  <p className="text-xs text-muted-foreground">
-                    Paused: visitors see &ldquo;This link isn&apos;t available&rdquo;.
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-sm tabular-nums text-muted-foreground">
-                  {formatNumber(totalClicks)} clicks all time
-                </span>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <LinkIcon className="size-4 text-primary" />
+              Download link
+            </CardTitle>
+            <CardDescription>
+              Opens {DOWNLOAD_URL.replace(/^https?:\/\//, "")}, which picks the
+              right store.
+            </CardDescription>
+            {link && (
+              <CardAction>
                 <LinkActiveSwitch id={link.id} isActive={link.isActive} />
-                <CopyButton
-                  value={url}
-                  size="sm"
-                  variant="outline"
-                  label="Copy"
-                />
-              </div>
-            </div>
-          ) : (
-            <p className="py-4 text-center text-sm text-muted-foreground">
-              No link yet.
-            </p>
-          )}
-          <div className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center">
-            <div className="min-w-0 flex-1">
-              <p className="text-xs text-muted-foreground">Referral code</p>
-              <p className="truncate font-mono text-sm font-medium tracking-wide">
-                {influencer.referralCode}
+              </CardAction>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {link && url ? (
+              <>
+                <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-2 pl-3">
+                  <p className="min-w-0 flex-1 truncate font-mono text-sm">
+                    {url}
+                  </p>
+                  <CopyButton
+                    value={url}
+                    size="sm"
+                    variant="outline"
+                    label="Copy"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {!link.isActive || !influencer.isActive
+                    ? "Paused: visitors see \u201cThis link isn\u2019t available\u201d."
+                    : `${formatNumber(totalClicks)} clicks all time`}
+                </p>
+              </>
+            ) : (
+              <p className="py-4 text-center text-sm text-muted-foreground">
+                No link yet.
               </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-sm tabular-nums text-muted-foreground">
-                {formatNumber(totalSignups)} signups all time
-              </span>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TicketIcon className="size-4 text-chart-1" />
+              Referral code
+            </CardTitle>
+            <CardDescription>
+              Entered at signup. Signups are copied from the referral portal.
+            </CardDescription>
+            <CardAction>
               <SignupCountDialog
                 influencerId={influencer.id}
                 referralCode={influencer.referralCode}
@@ -257,6 +283,13 @@ async function InfluencerDetail({
                   </Button>
                 }
               />
+            </CardAction>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-2 pl-3">
+              <p className="min-w-0 flex-1 truncate font-mono text-sm font-medium tracking-wide">
+                {influencer.referralCode}
+              </p>
               <CopyButton
                 value={influencer.referralCode}
                 size="sm"
@@ -264,250 +297,295 @@ async function InfluencerDetail({
                 label="Copy"
               />
             </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold tracking-tight">Analytics</h2>
-        <RangeTabs value={range} basePath={routes.influencer(id)} />
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <StatCard
-          icon={<MousePointerClickIcon />}
-          accent="primary"
-          label="Total clicks"
-          value={formatNumber(summary.clicks)}
-          change={percentChange(summary.clicks, summary.prevClicks)}
-          hint={`${formatNumber(summary.unique)} unique visitors`}
-        />
-        <StatCard
-          icon={<SmartphoneIcon />}
-          accent="android"
-          label="Android clicks"
-          value={formatNumber(summary.android)}
-          change={percentChange(summary.android, summary.prevAndroid)}
-          hint={`vs previous ${days} days`}
-        />
-        <StatCard
-          icon={<AppleIcon />}
-          accent="ios"
-          label="iOS clicks"
-          value={formatNumber(summary.ios)}
-          change={percentChange(summary.ios, summary.prevIos)}
-          hint={`vs previous ${days} days`}
-        />
-        <StatCard
-          icon={<MonitorIcon />}
-          accent="others"
-          label={OTHERS_LABEL}
-          value={formatNumber(summary.others)}
-          change={percentChange(summary.others, summary.prevOthers)}
-          hint={`Windows ${formatNumber(summary.windows)} · Mac ${formatNumber(summary.mac)}`}
-        />
-        <StatCard
-          icon={<UserPlusIcon />}
-          accent="signups"
-          label="Referral signups"
-          value={formatNumber(signupSummary.signups)}
-          change={percentChange(signupSummary.signups, signupSummary.prevSignups)}
-          hint={
-            conversionRate(signupSummary.signups, summary.clicks)
-              ? `${conversionRate(signupSummary.signups, summary.clicks)} of clicks`
-              : `vs previous ${days} days`
-          }
-        />
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Daily clicks and signups</CardTitle>
-          <CardDescription>
-            Clicks per day by platform, next to referral signups, last {days} days
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <DailyBarChart data={daily} />
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Platforms</CardTitle>
-            <CardDescription>Share of clicks, last {days} days</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <PlatformSplit
-              android={summary.android}
-              ios={summary.ios}
-              others={summary.others}
-              windows={summary.windows}
-              mac={summary.mac}
-            />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <Tabs defaultValue="country" className="gap-4">
-            <CardHeader>
-              <CardTitle>Audience</CardTitle>
-              <CardDescription>Last {days} days</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <TabsList>
-                <TabsTrigger value="country">Country</TabsTrigger>
-                <TabsTrigger value="referrer">Source</TabsTrigger>
-                <TabsTrigger value="browser">App</TabsTrigger>
-              </TabsList>
-              <TabsContent value="country">
-                <BreakdownList
-                  items={countries}
-                  emptyLabel="No location data yet"
-                />
-              </TabsContent>
-              <TabsContent value="referrer">
-                <BreakdownList
-                  items={referrers.map((r) => ({
-                    ...r,
-                    label: r.label === "Unknown" ? "Direct / in-app" : r.label,
-                  }))}
-                />
-              </TabsContent>
-              <TabsContent value="browser">
-                <BreakdownList items={browsers} />
-              </TabsContent>
-            </CardContent>
-          </Tabs>
-        </Card>
-      </div>
-
-      <Card className="pb-0">
-        <CardHeader>
-          <CardTitle>Recent clicks</CardTitle>
-          <CardDescription>Latest 15, all time</CardDescription>
-        </CardHeader>
-        {recent.length === 0 ? (
-          <CardContent className="pb-6">
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              No clicks yet. Share the link to get started.
+            <p className="text-xs text-muted-foreground">
+              {formatNumber(totalSignups)} signups all time
             </p>
           </CardContent>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="pl-4">When</TableHead>
-                <TableHead>Device</TableHead>
-                <TableHead className="hidden sm:table-cell">
-                  App / browser
-                </TableHead>
-                <TableHead className="hidden md:table-cell">Country</TableHead>
-                <TableHead className="pr-4">Source</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {recent.map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell
-                    className="pl-4 text-muted-foreground"
-                    title={c.createdAt.toISOString()}
-                  >
-                    {timeAgo(c.createdAt)}
-                  </TableCell>
-                  <TableCell>{deviceLabel(c.device, c.os)}</TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    {c.browser ?? "—"}
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    {c.country ?? "—"}
-                  </TableCell>
-                  <TableCell className="pr-4">
-                    {c.referrer ?? "Direct / in-app"}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </Card>
+        </Card>
+      </div>
 
-      <Card className="pb-0">
-        <CardHeader>
-          <CardTitle>Signups by day</CardTitle>
-          <CardDescription>
-            Copied from the referral portal for {influencer.referralCode}
-          </CardDescription>
-          <CardAction>
-            <SignupCountDialog
-              influencerId={influencer.id}
-              referralCode={influencer.referralCode}
-              trigger={
-                <Button size="sm" variant="outline">
-                  <PlusIcon data-icon="inline-start" />
-                  Add day
-                </Button>
+      <Tabs defaultValue="overview" className="gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="clicks">
+              Clicks{" "}
+              <span className="text-muted-foreground tabular-nums">
+                {formatNumber(totalClicks)}
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="signups">
+              Signups{" "}
+              <span className="text-muted-foreground tabular-nums">
+                {formatNumber(totalSignups)}
+              </span>
+            </TabsTrigger>
+          </TabsList>
+          <RangeTabs value={range} basePath={routes.influencer(id)} />
+        </div>
+
+        <TabsContent value="overview" className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <StatCard
+              icon={<MousePointerClickIcon />}
+              accent="primary"
+              label="Total clicks"
+              value={formatNumber(summary.clicks)}
+              change={percentChange(summary.clicks, summary.prevClicks)}
+              hint={`${formatNumber(summary.unique)} unique visitors`}
+            />
+            <StatCard
+              icon={<SmartphoneIcon />}
+              accent="android"
+              label="Android"
+              value={formatNumber(summary.android)}
+              change={percentChange(summary.android, summary.prevAndroid)}
+              hint={`vs previous ${days} days`}
+            />
+            <StatCard
+              icon={<AppleIcon />}
+              accent="ios"
+              label="iOS"
+              value={formatNumber(summary.ios)}
+              change={percentChange(summary.ios, summary.prevIos)}
+              hint={`vs previous ${days} days`}
+            />
+            <StatCard
+              icon={<MonitorIcon />}
+              accent="others"
+              label={OTHERS_LABEL}
+              value={formatNumber(summary.others)}
+              change={percentChange(summary.others, summary.prevOthers)}
+              hint={`Windows ${formatNumber(summary.windows)} · Mac ${formatNumber(summary.mac)}`}
+            />
+            <StatCard
+              icon={<UserPlusIcon />}
+              accent="signups"
+              label="Referral signups"
+              value={formatNumber(signupSummary.signups)}
+              change={percentChange(
+                signupSummary.signups,
+                signupSummary.prevSignups,
+              )}
+              hint={
+                conversionRate(signupSummary.signups, summary.clicks)
+                  ? `${conversionRate(signupSummary.signups, summary.clicks)} of clicks`
+                  : `vs previous ${days} days`
               }
             />
-          </CardAction>
-        </CardHeader>
-        {signupDays.length === 0 ? (
-          <CardContent className="pb-6">
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              No signups entered yet. Check the referral portal, then use Update
-              signups.
-            </p>
-          </CardContent>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="pl-4">Date</TableHead>
-                <TableHead className="text-right">Signups</TableHead>
-                <TableHead className="hidden sm:table-cell">Note</TableHead>
-                <TableHead className="hidden md:table-cell">Updated</TableHead>
-                <TableHead className="w-20 pr-4" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {signupDays.map((day) => {
-                const date = day.date.toISOString().slice(0, 10);
-                const label = formatDate(day.date, "UTC");
-                return (
-                  <TableRow key={day.id}>
-                    <TableCell className="pl-4">{label}</TableCell>
-                    <TableCell className="text-right font-medium tabular-nums">
-                      {formatNumber(day.count)}
-                    </TableCell>
-                    <TableCell className="hidden max-w-64 truncate text-muted-foreground sm:table-cell">
-                      {day.note ?? "—"}
-                    </TableCell>
-                    <TableCell className="hidden text-muted-foreground md:table-cell">
-                      {timeAgo(day.updatedAt)}
-                    </TableCell>
-                    <TableCell className="pr-4">
-                      <div className="flex justify-end gap-0.5">
-                        <SignupCountDialog
-                          influencerId={influencer.id}
-                          referralCode={influencer.referralCode}
-                          entry={{ date, count: day.count, note: day.note }}
-                          trigger={
-                            <Button variant="ghost" size="icon-sm" aria-label={`Edit ${label}`}>
-                              <PencilIcon />
-                            </Button>
-                          }
-                        />
-                        <DeleteSignupCountButton id={day.id} label={label} />
-                      </div>
-                    </TableCell>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Daily clicks and signups</CardTitle>
+              <CardDescription>
+                Clicks per day by platform, next to referral signups, last{" "}
+                {days} days
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DailyBarChart data={daily} />
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Platforms</CardTitle>
+                <CardDescription>
+                  Share of clicks, last {days} days
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <PlatformSplit
+                  android={summary.android}
+                  ios={summary.ios}
+                  others={summary.others}
+                  windows={summary.windows}
+                  mac={summary.mac}
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <Tabs defaultValue="country" className="gap-4">
+                <CardHeader>
+                  <CardTitle>Audience</CardTitle>
+                  <CardDescription>Last {days} days</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <TabsList>
+                    <TabsTrigger value="country">Country</TabsTrigger>
+                    <TabsTrigger value="referrer">Source</TabsTrigger>
+                    <TabsTrigger value="browser">App</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="country">
+                    <BreakdownList
+                      items={countries}
+                      emptyLabel="No location data yet"
+                    />
+                  </TabsContent>
+                  <TabsContent value="referrer">
+                    <BreakdownList
+                      items={referrers.map((r) => ({
+                        ...r,
+                        label:
+                          r.label === "Unknown" ? "Direct / in-app" : r.label,
+                      }))}
+                    />
+                  </TabsContent>
+                  <TabsContent value="browser">
+                    <BreakdownList items={browsers} />
+                  </TabsContent>
+                </CardContent>
+              </Tabs>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="clicks">
+          <Card className="pb-0">
+            <CardHeader>
+              <CardTitle>Recent clicks</CardTitle>
+              <CardDescription>
+                Latest 50, all time · bots excluded
+              </CardDescription>
+            </CardHeader>
+            {recent.length === 0 ? (
+              <CardContent className="pb-6">
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No clicks yet. Share the link to get started.
+                </p>
+              </CardContent>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="pl-4">When</TableHead>
+                    <TableHead>Device</TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      App / browser
+                    </TableHead>
+                    <TableHead className="hidden md:table-cell">
+                      Country
+                    </TableHead>
+                    <TableHead className="pr-4">Source</TableHead>
                   </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {recent.map((c) => (
+                    <TableRow key={c.id}>
+                      <TableCell
+                        className="pl-4 text-muted-foreground"
+                        title={c.createdAt.toISOString()}
+                      >
+                        {timeAgo(c.createdAt)}
+                      </TableCell>
+                      <TableCell>{deviceLabel(c.device, c.os)}</TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        {c.browser ?? "—"}
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        {c.country ?? "—"}
+                      </TableCell>
+                      <TableCell className="pr-4">
+                        {c.referrer ?? "Direct / in-app"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="signups">
+          <Card className="pb-0">
+            <CardHeader>
+              <CardTitle>Signups by day</CardTitle>
+              <CardDescription>
+                Copied from the referral portal for {influencer.referralCode}
+              </CardDescription>
+              <CardAction>
+                <SignupCountDialog
+                  influencerId={influencer.id}
+                  referralCode={influencer.referralCode}
+                  trigger={
+                    <Button size="sm" variant="outline">
+                      <PlusIcon data-icon="inline-start" />
+                      Add day
+                    </Button>
+                  }
+                />
+              </CardAction>
+            </CardHeader>
+            {signupDays.length === 0 ? (
+              <CardContent className="pb-6">
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No signups entered yet. Check the referral portal, then use
+                  Update signups.
+                </p>
+              </CardContent>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="pl-4">Date</TableHead>
+                    <TableHead className="text-right">Signups</TableHead>
+                    <TableHead className="hidden sm:table-cell">Note</TableHead>
+                    <TableHead className="hidden md:table-cell">
+                      Updated
+                    </TableHead>
+                    <TableHead className="w-20 pr-4" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {signupDays.map((day) => {
+                    const date = day.date.toISOString().slice(0, 10);
+                    const label = formatDate(day.date, "UTC");
+                    return (
+                      <TableRow key={day.id}>
+                        <TableCell className="pl-4">{label}</TableCell>
+                        <TableCell className="text-right font-medium tabular-nums">
+                          {formatNumber(day.count)}
+                        </TableCell>
+                        <TableCell className="hidden max-w-64 truncate text-muted-foreground sm:table-cell">
+                          {day.note ?? "—"}
+                        </TableCell>
+                        <TableCell className="hidden text-muted-foreground md:table-cell">
+                          {timeAgo(day.updatedAt)}
+                        </TableCell>
+                        <TableCell className="pr-4">
+                          <div className="flex justify-end gap-0.5">
+                            <SignupCountDialog
+                              influencerId={influencer.id}
+                              referralCode={influencer.referralCode}
+                              entry={{ date, count: day.count, note: day.note }}
+                              trigger={
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  aria-label={`Edit ${label}`}
+                                >
+                                  <PencilIcon />
+                                </Button>
+                              }
+                            />
+                            <DeleteSignupCountButton
+                              id={day.id}
+                              label={label}
+                            />
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
