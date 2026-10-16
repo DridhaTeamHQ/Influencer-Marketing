@@ -22,10 +22,10 @@ export function CopyButton({
     try {
       await navigator.clipboard.writeText(value);
       setCopied(true);
-      toast.add({ title: "Link copied", description: value, type: "success" });
+      toast.add({ title: "Copied", description: value, type: "success" });
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      toast.add({ title: "Couldn't copy", description: "Copy the link manually.", type: "error" });
+      toast.add({ title: "Couldn't copy", description: "Copy it manually.", type: "error" });
     }
   }
 

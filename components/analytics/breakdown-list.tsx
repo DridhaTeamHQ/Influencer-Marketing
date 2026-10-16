@@ -28,7 +28,7 @@ export function BreakdownList({
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full rounded-full bg-primary"
+              className="h-full rounded-full bg-chart-2"
               style={{ width: `${max ? (item.clicks / max) * 100 : 0}%` }}
             />
           </div>

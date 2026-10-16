@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { connection } from "next/server";
-import { ArrowRightIcon, UsersIcon } from "lucide-react";
+import { AppleIcon, ArrowRightIcon, MonitorIcon, MousePointerClickIcon, SmartphoneIcon, UserPlusIcon, UsersIcon } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { BreakdownList } from "@/components/analytics/breakdown-list";
 import { ClicksChart } from "@/components/analytics/clicks-chart";
@@ -15,16 +15,17 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   getDailyClicks,
+  getSignupSummary,
   getSummary,
+  conversionRate,
   getTopInfluencers,
   getTopValues,
   parseRange,
   percentChange,
   RANGES,
 } from "@/lib/analytics";
-import { PLATFORM_LABELS, formatNumber, initials } from "@/lib/format";
+import { OTHERS_LABEL, formatNumber, initials } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
-import type { SocialPlatform } from "@/lib/generated/prisma/enums";
 
 export default function DashboardPage(props: PageProps<"/">) {
   return (
@@ -42,9 +43,10 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/">["searc
   const range = parseRange((await searchParams).range);
   const days = RANGES[range];
 
-  const [influencerCount, summary, daily, countries, top] = await Promise.all([
+  const [influencerCount, summary, signupSummary, daily, countries, top] = await Promise.all([
     prisma.influencer.count({ where: { isActive: true } }),
     getSummary(range),
+    getSignupSummary(range),
     getDailyClicks(range),
     getTopValues("country", range),
     getTopInfluencers(range),
@@ -77,36 +79,56 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/">["searc
         <RangeTabs value={range} basePath="/" />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
+          icon={<MousePointerClickIcon />}
+          accent="primary"
           label="Total clicks"
           value={formatNumber(summary.clicks)}
           change={percentChange(summary.clicks, summary.prevClicks)}
-          hint={`vs previous ${days} days`}
+          hint={`${formatNumber(summary.unique)} unique · ${formatNumber(summary.clicksToday)} today`}
         />
         <StatCard
+          icon={<SmartphoneIcon />}
+          accent="android"
           label="Android clicks"
           value={formatNumber(summary.android)}
           change={percentChange(summary.android, summary.prevAndroid)}
           hint={`vs previous ${days} days`}
         />
         <StatCard
+          icon={<AppleIcon />}
+          accent="ios"
           label="iOS clicks"
           value={formatNumber(summary.ios)}
           change={percentChange(summary.ios, summary.prevIos)}
           hint={`vs previous ${days} days`}
         />
         <StatCard
-          label="Unique visitors"
-          value={formatNumber(summary.unique)}
-          change={percentChange(summary.unique, summary.prevUnique)}
-          hint={`${formatNumber(summary.clicksToday)} clicks today`}
+          icon={<MonitorIcon />}
+          accent="others"
+          label={OTHERS_LABEL}
+          value={formatNumber(summary.others)}
+          change={percentChange(summary.others, summary.prevOthers)}
+          hint={`Windows ${formatNumber(summary.windows)} · Mac ${formatNumber(summary.mac)}`}
+        />
+        <StatCard
+          icon={<UserPlusIcon />}
+          accent="signups"
+          label="Referral signups"
+          value={formatNumber(signupSummary.signups)}
+          change={percentChange(signupSummary.signups, signupSummary.prevSignups)}
+          hint={
+            conversionRate(signupSummary.signups, summary.clicks)
+              ? `${conversionRate(signupSummary.signups, summary.clicks)} of clicks`
+              : `vs previous ${days} days`
+          }
         />
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Android vs iOS clicks</CardTitle>
+          <CardTitle>Clicks by platform</CardTitle>
           <CardDescription>Last {days} days, bots excluded</CardDescription>
         </CardHeader>
         <CardContent>
@@ -142,17 +164,12 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/">["searc
                       </Avatar>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium">{inf.name}</span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {PLATFORM_LABELS[inf.platform as SocialPlatform]}
-                          {inf.handle && ` · @${inf.handle}`}
+                        <span className="block truncate text-xs text-muted-foreground tabular-nums">
+                          {formatNumber(inf.android)} Android · {formatNumber(inf.ios)} iOS · {formatNumber(inf.others)} others ·{" "}
+                          {formatNumber(inf.signups)} signups
                         </span>
                       </span>
-                      <span className="text-right">
-                        <span className="block text-sm font-medium tabular-nums">{formatNumber(inf.clicks)}</span>
-                        <span className="block text-xs text-muted-foreground tabular-nums">
-                          {formatNumber(inf.android)} Android · {formatNumber(inf.ios)} iOS
-                        </span>
-                      </span>
+                      <span className="text-sm font-medium tabular-nums">{formatNumber(inf.clicks)}</span>
                     </Link>
                   </li>
                 ))}
@@ -163,11 +180,17 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/">["searc
 
         <Card>
           <CardHeader>
-            <CardTitle>Android vs iOS</CardTitle>
-            <CardDescription>Share of mobile clicks</CardDescription>
+            <CardTitle>Platforms</CardTitle>
+            <CardDescription>Share of clicks by device</CardDescription>
           </CardHeader>
           <CardContent>
-            <PlatformSplit android={summary.android} ios={summary.ios} />
+            <PlatformSplit
+              android={summary.android}
+              ios={summary.ios}
+              others={summary.others}
+              windows={summary.windows}
+              mac={summary.mac}
+            />
           </CardContent>
         </Card>
 
@@ -191,8 +214,8 @@ function DashboardSkeleton() {
       <div className="flex justify-end">
         <Skeleton className="h-7 w-56" />
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }, (_, i) => (
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {Array.from({ length: 5 }, (_, i) => (
           <Skeleton key={i} className="h-28 rounded-xl" />
         ))}
       </div>

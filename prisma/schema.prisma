@@ -29,19 +29,22 @@ enum DiscountType {
 }
 
 model Influencer {
-  id        String         @id @default(cuid())
-  name      String
-  handle    String?
-  email     String?
-  platform  SocialPlatform @default(INSTAGRAM)
-  followers Int?
-  notes     String?
-  isActive  Boolean        @default(true)
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  id           String         @id @default(cuid())
+  name         String
+  handle       String?
+  email        String?
+  platform     SocialPlatform @default(INSTAGRAM)
+  followers    Int?
+  notes        String?
+  /// Code users enter at signup in the referral portal, e.g. "BHARANI". Stored uppercase.
+  referralCode String         @unique
+  isActive     Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
-  link    Link?
-  coupons Coupon[]
+  link         Link?
+  signupCounts SignupCount[]
+  coupons      Coupon[]
 
   @@index([createdAt])
 }
@@ -56,6 +59,23 @@ model Link {
 
   influencer Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
   clicks     Click[]
+}
+
+/// Referral signups for one influencer on one day, copied from the referral portal.
+model SignupCount {
+  id           String   @id @default(cuid())
+  influencerId String
+  /// The day the signups happened.
+  date         DateTime @db.Date
+  count        Int
+  note         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  influencer Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+
+  @@unique([influencerId, date])
+  @@index([date])
 }
 
 model Click {
@@ -115,6 +135,6 @@ model CouponRedemption {
 
   coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
 
-  @@index([couponId, userId])
   @@unique([couponId, orderId])
+  @@index([couponId, userId])
 }

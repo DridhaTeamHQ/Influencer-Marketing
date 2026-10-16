@@ -6,24 +6,60 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { generateCode } from "@/lib/tracking";
+import { REFERRAL_CODE_PATTERN, isReferralCodeTaken, suggestReferralCode } from "@/lib/referrals";
 
 export type FormState = {
   ok?: boolean;
   message?: string;
   errors?: Record<string, string[] | undefined>;
+  /** What the user submitted, so the form can keep it after an error. */
+  values?: Record<string, string>;
 };
+
+function formValues(formData: FormData) {
+  return Object.fromEntries([...formData.entries()].filter(([, v]) => typeof v === "string")) as Record<
+    string,
+    string
+  >;
+}
 
 const emptyToNull = (v: unknown) => (typeof v === "string" && v.trim() === "" ? null : v);
 const optionalText = (max: number) => z.preprocess(emptyToNull, z.string().trim().max(max).nullable());
 
-/** Creates the influencer's link with a unique short code, retrying on the rare collision. */
-async function createLinkWithCode(db: Prisma.TransactionClient, influencerId: string) {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const code = generateCode();
-    const taken = await db.link.findUnique({ where: { code }, select: { id: true } });
-    if (!taken) return db.link.create({ data: { code, influencerId } });
+const SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]{1,39}$/;
+
+/** "Bharani Rayudu" / "@bharani.rayudu" -> "bharani-rayudu" */
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^[-_]+|[-_]+$/g, "")
+    .slice(0, 40);
+}
+
+async function isSlugTaken(db: Prisma.TransactionClient, code: string, exceptLinkId?: string) {
+  const link = await db.link.findFirst({
+    where: { code: { equals: code, mode: "insensitive" }, ...(exceptLinkId ? { NOT: { id: exceptLinkId } } : {}) },
+    select: { id: true },
+  });
+  return !!link;
+}
+
+/** Picks a free link name based on the handle or name, e.g. "bharani", "bharani-2", … */
+async function suggestSlug(db: Prisma.TransactionClient, base: string) {
+  const root = slugify(base);
+  if (root.length >= 2) {
+    for (let n = 1; n <= 50; n++) {
+      const candidate = n === 1 ? root : `${root.slice(0, 36)}-${n}`;
+      if (!(await isSlugTaken(db, candidate))) return candidate;
+    }
   }
-  throw new Error("Could not generate a unique link code");
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = generateCode().toLowerCase();
+    if (!(await isSlugTaken(db, code))) return code;
+  }
+  throw new Error("Could not generate a unique link name");
 }
 
 // ---------- Influencers ----------
@@ -38,22 +74,58 @@ const influencerSchema = z.object({
   platform: z.enum(["INSTAGRAM", "YOUTUBE", "TIKTOK", "X", "FACEBOOK", "OTHER"]),
   followers: z.preprocess(emptyToNull, z.coerce.number().int().nonnegative().nullable()),
   notes: optionalText(1000),
+  slug: z.preprocess(
+    (v) => (typeof v === "string" ? v.trim().toLowerCase() || null : null),
+    z
+      .string()
+      .regex(SLUG_PATTERN, "Use 2-40 lowercase letters, numbers, - or _ (start with a letter or number)")
+      .nullable(),
+  ),
+  referralCode: z.preprocess(
+    (v) => (typeof v === "string" ? v.trim().toUpperCase() || null : null),
+    z
+      .string()
+      .regex(REFERRAL_CODE_PATTERN, "Use 2-24 letters, numbers, - or _")
+      .nullable(),
+  ),
+});
+
+const referralTakenError = (code: string, formData: FormData): FormState => ({
+  errors: { referralCode: [`${code} is already another influencer's referral code`] },
+  values: formValues(formData),
+});
+
+const slugTakenError = (slug: string, formData: FormData): FormState => ({
+  errors: { slug: [`/r/${slug} is already used by another influencer`] },
+  values: formValues(formData),
 });
 
 export async function createInfluencer(_prev: FormState, formData: FormData): Promise<FormState> {
   const parsed = influencerSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
-    return { errors: z.flattenError(parsed.error).fieldErrors };
+    return { errors: z.flattenError(parsed.error).fieldErrors, values: formValues(formData) };
   }
-  const data = parsed.data;
+  const { slug, referralCode, ...data } = parsed.data;
 
-  await prisma.$transaction(async (tx) => {
-    const influencer = await tx.influencer.create({ data });
-    await createLinkWithCode(tx, influencer.id);
+  if (slug && (await isSlugTaken(prisma, slug))) return slugTakenError(slug, formData);
+  if (referralCode && (await isReferralCodeTaken(prisma, referralCode))) {
+    return referralTakenError(referralCode, formData);
+  }
+
+  const created = await prisma.$transaction(async (tx) => {
+    const influencer = await tx.influencer.create({
+      data: { ...data, referralCode: referralCode ?? (await suggestReferralCode(tx, data.handle ?? data.name)) },
+    });
+    const code = slug ?? (await suggestSlug(tx, data.handle ?? data.name));
+    await tx.link.create({ data: { code, influencerId: influencer.id } });
+    return { code, referralCode: influencer.referralCode };
   });
 
   refresh();
-  return { ok: true, message: `${data.name} added. Their tracking link is ready.` };
+  return {
+    ok: true,
+    message: `${data.name} added. Link /r/${created.code} · referral code ${created.referralCode}`,
+  };
 }
 
 export async function updateInfluencer(
@@ -63,9 +135,28 @@ export async function updateInfluencer(
 ): Promise<FormState> {
   const parsed = influencerSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
-    return { errors: z.flattenError(parsed.error).fieldErrors };
+    return { errors: z.flattenError(parsed.error).fieldErrors, values: formValues(formData) };
   }
-  await prisma.influencer.update({ where: { id }, data: parsed.data });
+  const { slug, referralCode, ...data } = parsed.data;
+  const link = await prisma.link.findUnique({ where: { influencerId: id }, select: { id: true, code: true } });
+
+  if (slug && link && slug !== link.code && (await isSlugTaken(prisma, slug, link.id))) {
+    return slugTakenError(slug, formData);
+  }
+  if (referralCode && (await isReferralCodeTaken(prisma, referralCode, id))) {
+    return referralTakenError(referralCode, formData);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // An empty referral code field keeps the current code.
+    await tx.influencer.update({ where: { id }, data: { ...data, ...(referralCode ? { referralCode } : {}) } });
+    if (slug && link && slug !== link.code) {
+      await tx.link.update({ where: { id: link.id }, data: { code: slug } });
+    } else if (!link) {
+      await tx.link.create({ data: { influencerId: id, code: slug ?? (await suggestSlug(tx, data.handle ?? data.name)) } });
+    }
+  });
+
   refresh();
   return { ok: true, message: "Influencer updated" };
 }
@@ -84,5 +175,43 @@ export async function deleteInfluencer(id: string) {
 
 export async function setLinkActive(id: string, isActive: boolean) {
   await prisma.link.update({ where: { id }, data: { isActive } });
+  refresh();
+}
+
+// ---------- Referral signups (copied from the referral portal) ----------
+
+const signupCountSchema = z.object({
+  date: z.iso.date("Pick a date"),
+  count: z.coerce.number({ error: "Enter a number" }).int("Whole numbers only").min(0, "Can't be negative").max(1_000_000),
+  note: optionalText(300),
+});
+
+/** Sets the number of signups for one influencer on one day (adds or replaces that day). */
+export async function saveSignupCount(
+  influencerId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = signupCountSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { errors: z.flattenError(parsed.error).fieldErrors, values: formValues(formData) };
+  }
+  const { count, note } = parsed.data;
+  const date = new Date(`${parsed.data.date}T00:00:00Z`);
+  if (date.getTime() > Date.now()) {
+    return { errors: { date: ["Date can't be in the future"] }, values: formValues(formData) };
+  }
+
+  await prisma.signupCount.upsert({
+    where: { influencerId_date: { influencerId, date } },
+    create: { influencerId, date, count, note },
+    update: { count, note },
+  });
+  refresh();
+  return { ok: true, message: `Saved ${count} signup${count === 1 ? "" : "s"} for ${parsed.data.date}` };
+}
+
+export async function deleteSignupCount(id: string) {
+  await prisma.signupCount.delete({ where: { id } });
   refresh();
 }

@@ -6,15 +6,35 @@ import { PageHeader } from "@/components/page-header";
 import { CopyButton } from "@/components/copy-button";
 import { InfluencerActions } from "@/components/influencers/influencer-actions";
 import { InfluencerFormDialog } from "@/components/influencers/influencer-form-dialog";
+import { ProfileButton } from "@/components/influencers/profile-button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getClickTotalsByInfluencer } from "@/lib/analytics";
-import { PLATFORM_LABELS, formatCompact, formatNumber, initials } from "@/lib/format";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { getClickTotalsByInfluencer, getSignupTotalsByInfluencer } from "@/lib/analytics";
+import {
+  PLATFORM_LABELS,
+  formatCompact,
+  formatNumber,
+  initials,
+} from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { getBaseUrl, trackingUrl } from "@/lib/tracking";
 
@@ -23,7 +43,10 @@ export default function InfluencersPage() {
     <Suspense
       fallback={
         <>
-          <PageHeader title="Influencers" description="Everyone promoting your apps, with their tracking links." />
+          <PageHeader
+            title="Influencers"
+            description="Everyone promoting DailyMattr, with their download links and referral codes."
+          />
           <Skeleton className="h-96 rounded-xl" />
         </>
       }
@@ -35,14 +58,19 @@ export default function InfluencersPage() {
 
 async function InfluencerList() {
   await connection();
-  const [influencers, totals, baseUrl] = await Promise.all([
-    prisma.influencer.findMany({ orderBy: { createdAt: "desc" }, include: { link: true } }),
+  const [influencers, totals, signupTotals, baseUrl] = await Promise.all([
+    prisma.influencer.findMany({
+      orderBy: { createdAt: "desc" },
+      include: { link: true },
+    }),
     getClickTotalsByInfluencer(),
+    getSignupTotalsByInfluencer(),
     getBaseUrl(),
   ]);
 
   const addButton = (
     <InfluencerFormDialog
+      linkPrefix={`${baseUrl.replace(/^https?:\/\//, "")}/r/`}
       trigger={
         <Button>
           <PlusIcon data-icon="inline-start" />
@@ -54,7 +82,10 @@ async function InfluencerList() {
 
   return (
     <>
-      <PageHeader title="Influencers" description="Everyone promoting your apps, with their tracking links.">
+      <PageHeader
+        title="Influencers"
+        description="Everyone promoting DailyMattr, with their download links and referral codes."
+      >
         {influencers.length > 0 && addButton}
       </PageHeader>
 
@@ -66,7 +97,8 @@ async function InfluencerList() {
             </EmptyMedia>
             <EmptyTitle>No influencers yet</EmptyTitle>
             <EmptyDescription>
-              Add someone and they&apos;ll get a unique download link you can share with them.
+              Add someone and they&apos;ll get a unique download link you can
+              share with them.
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>{addButton}</EmptyContent>
@@ -79,11 +111,22 @@ async function InfluencerList() {
                 <TableHead className="pl-4">Influencer</TableHead>
                 <TableHead className="hidden md:table-cell">Platform</TableHead>
                 <TableHead>Tracking link</TableHead>
-                <TableHead className="hidden text-right sm:table-cell">Android</TableHead>
-                <TableHead className="hidden text-right sm:table-cell">iOS</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="hidden text-right md:table-cell">Last 7 days</TableHead>
-                <TableHead className="hidden lg:table-cell">Status</TableHead>
+                <TableHead className="hidden md:table-cell">Referral code</TableHead>
+                <TableHead className="hidden text-right sm:table-cell">
+                  Android
+                </TableHead>
+                <TableHead className="hidden text-right sm:table-cell">
+                  iOS
+                </TableHead>
+                <TableHead className="hidden text-right xl:table-cell" title="Windows / Mac">
+                  Others
+                </TableHead>
+                <TableHead className="text-right">Clicks</TableHead>
+                <TableHead className="text-right">Signups</TableHead>
+                <TableHead className="hidden text-right xl:table-cell">
+                  Last 7 days
+                </TableHead>
+                <TableHead className="hidden xl:table-cell">Status</TableHead>
                 <TableHead className="w-10 pr-4" />
               </TableRow>
             </TableHeader>
@@ -95,31 +138,56 @@ async function InfluencerList() {
                 return (
                   <TableRow key={inf.id}>
                     <TableCell className="pl-4">
-                      <Link href={`/influencers/${inf.id}`} className="flex items-center gap-3">
+                      <Link
+                        href={`/influencers/${inf.id}`}
+                        className="flex items-center gap-3"
+                      >
                         <Avatar>
                           <AvatarFallback>{initials(inf.name)}</AvatarFallback>
                         </Avatar>
                         <span className="min-w-0">
-                          <span className="block max-w-48 truncate font-medium hover:underline">{inf.name}</span>
+                          <span className="block max-w-48 truncate font-medium hover:underline">
+                            {inf.name}
+                          </span>
                           <span className="block max-w-48 truncate text-xs text-muted-foreground">
-                            {inf.handle ? `@${inf.handle}` : PLATFORM_LABELS[inf.platform]}
-                            {inf.followers != null && ` · ${formatCompact(inf.followers)} followers`}
+                            {inf.handle
+                              ? `@${inf.handle}`
+                              : PLATFORM_LABELS[inf.platform]}
+                            {inf.followers != null &&
+                              ` · ${formatCompact(inf.followers)} followers`}
                           </span>
                         </span>
                       </Link>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
-                      <Badge variant="outline">{PLATFORM_LABELS[inf.platform]}</Badge>
+                      <div className="flex items-center gap-1">
+                        <Badge variant="outline">
+                          {PLATFORM_LABELS[inf.platform]}
+                        </Badge>
+                        <ProfileButton platform={inf.platform} handle={inf.handle} />
+                      </div>
                     </TableCell>
                     <TableCell>
                       {link && url ? (
                         <div className="flex items-center gap-1">
-                          <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs">/r/{link.code}</code>
+                          <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs">
+                            /r/{link.code}
+                          </code>
                           <CopyButton value={url} />
                         </div>
                       ) : (
-                        <span className="text-xs text-muted-foreground">No link</span>
+                        <span className="text-xs text-muted-foreground">
+                          No link
+                        </span>
                       )}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <div className="flex items-center gap-1">
+                        <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs">
+                          {inf.referralCode}
+                        </code>
+                        <CopyButton value={inf.referralCode} label="Copy code" />
+                      </div>
                     </TableCell>
                     <TableCell className="hidden text-right tabular-nums sm:table-cell">
                       {formatNumber(total?.android ?? 0)}
@@ -127,26 +195,39 @@ async function InfluencerList() {
                     <TableCell className="hidden text-right tabular-nums sm:table-cell">
                       {formatNumber(total?.ios ?? 0)}
                     </TableCell>
+                    <TableCell className="hidden text-right tabular-nums text-muted-foreground xl:table-cell">
+                      {formatNumber(total?.others ?? 0)}
+                    </TableCell>
                     <TableCell className="text-right font-medium tabular-nums">
                       {formatNumber(total?.clicks ?? 0)}
                     </TableCell>
-                    <TableCell className="hidden text-right tabular-nums text-muted-foreground md:table-cell">
+                    <TableCell className="text-right font-medium tabular-nums">
+                      {formatNumber(signupTotals.get(inf.id) ?? 0)}
+                    </TableCell>
+                    <TableCell className="hidden text-right tabular-nums text-muted-foreground xl:table-cell">
                       {formatNumber(total?.last7 ?? 0)}
                     </TableCell>
-                    <TableCell className="hidden lg:table-cell">
+                    <TableCell className="hidden xl:table-cell">
                       {inf.isActive ? (
-                        <Badge variant="secondary">
+                        <Badge variant="secondary" className="bg-primary/10 text-primary">
                           <span className="size-1.5 rounded-full bg-primary" />
                           Active
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="text-muted-foreground">
+                        <Badge
+                          variant="outline"
+                          className="text-muted-foreground"
+                        >
                           Paused
                         </Badge>
                       )}
                     </TableCell>
                     <TableCell className="pr-4">
-                      <InfluencerActions id={inf.id} name={inf.name} isActive={inf.isActive} />
+                      <InfluencerActions
+                        id={inf.id}
+                        name={inf.name}
+                        isActive={inf.isActive}
+                      />
                     </TableCell>
                   </TableRow>
                 );

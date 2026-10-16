@@ -8,6 +8,12 @@ function createPrismaClient() {
   return new PrismaClient({ adapter });
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+// Reuse one client across dev hot reloads, but replace it after `prisma generate`
+// (the regenerated PrismaClient is a new class, so the cached instance no longer matches).
+const cached = globalForPrisma.prisma;
+export const prisma = cached instanceof PrismaClient ? cached : createPrismaClient();
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+if (process.env.NODE_ENV !== "production") {
+  if (cached && cached !== prisma) void cached.$disconnect();
+  globalForPrisma.prisma = prisma;
+}

@@ -12,8 +12,9 @@ import {
 import type { DailyPoint } from "@/lib/analytics";
 
 const config = {
-  android: { label: "Android", color: "var(--primary)" },
-  ios: { label: "iOS", color: "var(--chart-2)" },
+  android: { label: "Android", color: "var(--chart-2)" },
+  ios: { label: "iOS", color: "var(--chart-1)" },
+  others: { label: "Others (Windows / Mac)", color: "var(--chart-3)" },
 } satisfies ChartConfig;
 
 const shortDate = (value: string) =>
@@ -28,9 +29,9 @@ export function ClicksChart({ data }: { data: DailyPoint[] }) {
     <ChartContainer config={config} className="aspect-auto h-64 w-full">
       <AreaChart data={data} margin={{ left: 0, right: 8, top: 8 }}>
         <defs>
-          {(["android", "ios"] as const).map((key) => (
+          {(["android", "ios", "others"] as const).map((key) => (
             <linearGradient key={key} id={`fill-${key}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={`var(--color-${key})`} stopOpacity={0.25} />
+              <stop offset="5%" stopColor={`var(--color-${key})`} stopOpacity={0.3} />
               <stop offset="95%" stopColor={`var(--color-${key})`} stopOpacity={0} />
             </linearGradient>
           ))}
@@ -49,14 +50,15 @@ export function ClicksChart({ data }: { data: DailyPoint[] }) {
           cursor={false}
           content={<ChartTooltipContent indicator="dot" labelFormatter={(v) => shortDate(String(v))} />}
         />
-        {(["ios", "android"] as const).map((key) => (
+        {(["others", "ios", "android"] as const).map((key) => (
           <Area
             key={key}
             dataKey={key}
             type="monotone"
             stroke={`var(--color-${key})`}
             fill={`url(#fill-${key})`}
-            strokeWidth={2}
+            strokeWidth={key === "others" ? 1.5 : 2}
+            strokeDasharray={key === "others" ? "4 4" : undefined}
           />
         ))}
         <ChartLegend content={<ChartLegendContent />} />

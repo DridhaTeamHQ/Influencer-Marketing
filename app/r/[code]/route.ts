@@ -5,10 +5,11 @@ import { DOWNLOAD_URL, hashVisitor, parseUserAgent } from "@/lib/tracking";
 export async function GET(request: NextRequest, ctx: RouteContext<"/r/[code]">) {
   const { code } = await ctx.params;
 
-  const link = await prisma.link.findUnique({
-    where: { code },
-    select: { id: true, isActive: true, influencer: { select: { isActive: true } } },
-  });
+  const select = { id: true, isActive: true, influencer: { select: { isActive: true } } } as const;
+  // Exact match first (older random codes are mixed-case), then case-insensitive so /r/Bharani works too.
+  const link =
+    (await prisma.link.findUnique({ where: { code }, select })) ??
+    (await prisma.link.findFirst({ where: { code: { equals: code, mode: "insensitive" } }, select }));
 
   if (!link) {
     return new Response("Link not found", { status: 404 });
