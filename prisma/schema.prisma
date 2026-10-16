@@ -38,6 +38,9 @@ model Influencer {
   notes        String?
   /// Code users enter at signup in the referral portal, e.g. "BHARANI". Stored uppercase.
   referralCode String         @unique
+  /// Campaign period agreed with the influencer (inclusive dates).
+  periodStart  DateTime?      @db.Date
+  periodEnd    DateTime?      @db.Date
   isActive     Boolean        @default(true)
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt

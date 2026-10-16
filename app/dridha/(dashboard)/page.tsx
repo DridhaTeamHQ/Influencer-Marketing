@@ -26,8 +26,9 @@ import {
 } from "@/lib/analytics";
 import { OTHERS_LABEL, formatNumber, initials } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
+import { routes } from "@/lib/routes";
 
-export default function DashboardPage(props: PageProps<"/">) {
+export default function DashboardPage(props: PageProps<"/dridha">) {
   return (
     <>
       <PageHeader title="Dashboard" description="Clicks across every influencer link." />
@@ -38,7 +39,7 @@ export default function DashboardPage(props: PageProps<"/">) {
   );
 }
 
-async function Dashboard({ searchParams }: { searchParams: PageProps<"/">["searchParams"] }) {
+async function Dashboard({ searchParams }: { searchParams: PageProps<"/dridha">["searchParams"] }) {
   await connection();
   const range = parseRange((await searchParams).range);
   const days = RANGES[range];
@@ -65,7 +66,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/">["searc
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button nativeButton={false} render={<Link href="/influencers" />}>
+          <Button nativeButton={false} render={<Link href={routes.influencers} />}>
             Add influencer
           </Button>
         </EmptyContent>
@@ -76,7 +77,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/">["searc
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <RangeTabs value={range} basePath="/" />
+        <RangeTabs value={range} basePath={routes.dashboard} />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -142,7 +143,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/">["searc
             <CardTitle>Top influencers</CardTitle>
             <CardDescription>By clicks in this period</CardDescription>
             <CardAction>
-              <Button variant="ghost" size="icon-sm" nativeButton={false} render={<Link href="/influencers" />} aria-label="All influencers">
+              <Button variant="ghost" size="icon-sm" nativeButton={false} render={<Link href={routes.influencers} />} aria-label="All influencers">
                 <ArrowRightIcon />
               </Button>
             </CardAction>
@@ -155,7 +156,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/">["searc
                 {top.map((inf, i) => (
                   <li key={inf.id}>
                     <Link
-                      href={`/influencers/${inf.id}`}
+                      href={routes.influencer(inf.id)}
                       className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted"
                     >
                       <span className="w-4 text-xs text-muted-foreground tabular-nums">{i + 1}</span>

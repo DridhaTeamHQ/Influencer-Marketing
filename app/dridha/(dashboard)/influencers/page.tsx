@@ -28,15 +28,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getClickTotalsByInfluencer, getSignupTotalsByInfluencer } from "@/lib/analytics";
+import { getClickTotalsByInfluencer } from "@/lib/analytics";
 import {
-  PLATFORM_LABELS,
   formatCompact,
   formatNumber,
+  formatPeriod,
   initials,
+  PERIOD_BADGE,
+  periodStatus,
+  PLATFORM_LABELS,
 } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { getBaseUrl, trackingUrl } from "@/lib/tracking";
+import { routes } from "@/lib/routes";
 
 export default function InfluencersPage() {
   return (
@@ -58,13 +62,12 @@ export default function InfluencersPage() {
 
 async function InfluencerList() {
   await connection();
-  const [influencers, totals, signupTotals, baseUrl] = await Promise.all([
+  const [influencers, totals, baseUrl] = await Promise.all([
     prisma.influencer.findMany({
       orderBy: { createdAt: "desc" },
       include: { link: true },
     }),
     getClickTotalsByInfluencer(),
-    getSignupTotalsByInfluencer(),
     getBaseUrl(),
   ]);
 
@@ -112,21 +115,11 @@ async function InfluencerList() {
                 <TableHead className="hidden md:table-cell">Platform</TableHead>
                 <TableHead>Tracking link</TableHead>
                 <TableHead className="hidden md:table-cell">Referral code</TableHead>
-                <TableHead className="hidden text-right sm:table-cell">
-                  Android
-                </TableHead>
-                <TableHead className="hidden text-right sm:table-cell">
-                  iOS
-                </TableHead>
-                <TableHead className="hidden text-right xl:table-cell" title="Windows / Mac">
-                  Others
-                </TableHead>
-                <TableHead className="text-right">Clicks</TableHead>
-                <TableHead className="text-right">Signups</TableHead>
-                <TableHead className="hidden text-right xl:table-cell">
+                <TableHead className="hidden sm:table-cell">Campaign period</TableHead>
+                <TableHead className="hidden text-right lg:table-cell">
                   Last 7 days
                 </TableHead>
-                <TableHead className="hidden xl:table-cell">Status</TableHead>
+                <TableHead className="hidden lg:table-cell">Status</TableHead>
                 <TableHead className="w-10 pr-4" />
               </TableRow>
             </TableHeader>
@@ -139,7 +132,7 @@ async function InfluencerList() {
                   <TableRow key={inf.id}>
                     <TableCell className="pl-4">
                       <Link
-                        href={`/influencers/${inf.id}`}
+                        href={routes.influencer(inf.id)}
                         className="flex items-center gap-3"
                       >
                         <Avatar>
@@ -189,25 +182,13 @@ async function InfluencerList() {
                         <CopyButton value={inf.referralCode} label="Copy code" />
                       </div>
                     </TableCell>
-                    <TableCell className="hidden text-right tabular-nums sm:table-cell">
-                      {formatNumber(total?.android ?? 0)}
+                    <TableCell className="hidden sm:table-cell">
+                      <PeriodCell start={inf.periodStart} end={inf.periodEnd} />
                     </TableCell>
-                    <TableCell className="hidden text-right tabular-nums sm:table-cell">
-                      {formatNumber(total?.ios ?? 0)}
-                    </TableCell>
-                    <TableCell className="hidden text-right tabular-nums text-muted-foreground xl:table-cell">
-                      {formatNumber(total?.others ?? 0)}
-                    </TableCell>
-                    <TableCell className="text-right font-medium tabular-nums">
-                      {formatNumber(total?.clicks ?? 0)}
-                    </TableCell>
-                    <TableCell className="text-right font-medium tabular-nums">
-                      {formatNumber(signupTotals.get(inf.id) ?? 0)}
-                    </TableCell>
-                    <TableCell className="hidden text-right tabular-nums text-muted-foreground xl:table-cell">
+                    <TableCell className="hidden text-right tabular-nums text-muted-foreground lg:table-cell">
                       {formatNumber(total?.last7 ?? 0)}
                     </TableCell>
-                    <TableCell className="hidden xl:table-cell">
+                    <TableCell className="hidden lg:table-cell">
                       {inf.isActive ? (
                         <Badge variant="secondary" className="bg-primary/10 text-primary">
                           <span className="size-1.5 rounded-full bg-primary" />
@@ -237,5 +218,21 @@ async function InfluencerList() {
         </Card>
       )}
     </>
+  );
+}
+
+function PeriodCell({ start, end }: { start: Date | null; end: Date | null }) {
+  const label = formatPeriod(start, end);
+  const status = periodStatus(start, end);
+  if (!label || !status) {
+    return <span className="text-xs text-muted-foreground">Not set</span>;
+  }
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <span className="text-sm whitespace-nowrap">{label}</span>
+      <Badge variant="secondary" className={PERIOD_BADGE[status]}>
+        {status}
+      </Badge>
+    </div>
   );
 }

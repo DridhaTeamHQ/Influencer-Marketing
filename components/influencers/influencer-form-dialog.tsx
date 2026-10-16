@@ -22,6 +22,9 @@ import { toast } from "@/components/ui/toast";
 import { createInfluencer, updateInfluencer, type FormState } from "@/app/actions";
 import { PLATFORM_LABELS } from "@/lib/format";
 
+/** Date (stored at UTC midnight) -> "2026-10-16" for <input type="date">. */
+const toDateInput = (d?: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
+
 const platformItems = Object.entries(PLATFORM_LABELS).map(([value, label]) => ({ value, label }));
 
 export type InfluencerFormValues = {
@@ -33,6 +36,8 @@ export type InfluencerFormValues = {
   followers: number | null;
   notes: string | null;
   referralCode?: string;
+  periodStart?: Date | null;
+  periodEnd?: Date | null;
   link?: { code: string } | null;
 };
 
@@ -69,7 +74,7 @@ export function InfluencerFormDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={trigger} />
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{influencer ? "Edit influencer" : "Add influencer"}</DialogTitle>
           <DialogDescription>
@@ -133,6 +138,31 @@ export function InfluencerFormDialog({
               </FieldDescription>
               <FieldError errors={err("referralCode")} />
             </Field>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field data-invalid={!!err("periodStart") || undefined}>
+                <FieldLabel htmlFor="periodStart">Start date</FieldLabel>
+                <Input
+                  id="periodStart"
+                  name="periodStart"
+                  type="date"
+                  defaultValue={v("periodStart", toDateInput(influencer?.periodStart))}
+                  aria-invalid={!!err("periodStart")}
+                />
+                <FieldError errors={err("periodStart")} />
+              </Field>
+              <Field data-invalid={!!err("periodEnd") || undefined}>
+                <FieldLabel htmlFor="periodEnd">End date</FieldLabel>
+                <Input
+                  id="periodEnd"
+                  name="periodEnd"
+                  type="date"
+                  defaultValue={v("periodEnd", toDateInput(influencer?.periodEnd))}
+                  aria-invalid={!!err("periodEnd")}
+                />
+                <FieldError errors={err("periodEnd")} />
+              </Field>
+            </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field>

@@ -44,6 +44,35 @@ export function formatDate(date: Date, timeZone?: string) {
   return date.toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric", timeZone });
 }
 
+/** "Oct 16 – Nov 15, 2026" for a campaign period, or null when no dates are set. */
+export function formatPeriod(start: Date | null, end: Date | null) {
+  if (!start && !end) return null;
+  const fmt = (d: Date, withYear: boolean) =>
+    d.toLocaleDateString("en", { month: "short", day: "numeric", year: withYear ? "numeric" : undefined, timeZone: "UTC" });
+  if (start && end) {
+    const sameYear = start.getUTCFullYear() === end.getUTCFullYear();
+    return `${fmt(start, !sameYear)} – ${fmt(end, true)}`;
+  }
+  return start ? `From ${fmt(start, true)}` : `Until ${fmt(end!, true)}`;
+}
+
+/** Badge colors for each campaign status. */
+export const PERIOD_BADGE = {
+  Upcoming: "bg-chart-3/10 text-chart-3",
+  Running: "bg-primary/10 text-primary",
+  Ended: "bg-muted text-muted-foreground",
+} as const;
+
+/** Where today falls in the campaign period. */
+export function periodStatus(start: Date | null, end: Date | null) {
+  if (!start && !end) return null;
+  const today = new Date();
+  const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  if (start && todayUtc < start.getTime()) return "Upcoming" as const;
+  if (end && todayUtc > end.getTime()) return "Ended" as const;
+  return "Running" as const;
+}
+
 export function timeAgo(date: Date) {
   const seconds = Math.round((Date.now() - date.getTime()) / 1000);
   const units: [Intl.RelativeTimeFormatUnit, number][] = [

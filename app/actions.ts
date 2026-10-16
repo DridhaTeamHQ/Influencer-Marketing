@@ -1,12 +1,15 @@
 "use server";
 
 import { refresh } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { generateCode } from "@/lib/tracking";
+import { SESSION_COOKIE, isValidSessionToken } from "@/lib/auth";
 import { REFERRAL_CODE_PATTERN, isReferralCodeTaken, suggestReferralCode } from "@/lib/referrals";
+import { routes } from "@/lib/routes";
 
 export type FormState = {
   ok?: boolean;
@@ -21,6 +24,12 @@ function formValues(formData: FormData) {
     string,
     string
   >;
+}
+
+/** Every action below is dashboard-only: reject calls without a valid login. */
+async function requireAdmin() {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (!isValidSessionToken(token)) throw new Error("Not signed in");
 }
 
 const emptyToNull = (v: unknown) => (typeof v === "string" && v.trim() === "" ? null : v);
@@ -64,6 +73,15 @@ async function suggestSlug(db: Prisma.TransactionClient, base: string) {
 
 // ---------- Influencers ----------
 
+/** "2026-10-16" (from <input type="date">) -> Date at UTC midnight, or null when empty. */
+const optionalDay = z.preprocess(
+  emptyToNull,
+  z.iso
+    .date("Pick a valid date")
+    .transform((d) => new Date(`${d}T00:00:00Z`))
+    .nullable(),
+);
+
 const influencerSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100),
   handle: z.preprocess(
@@ -81,6 +99,8 @@ const influencerSchema = z.object({
       .regex(SLUG_PATTERN, "Use 2-40 lowercase letters, numbers, - or _ (start with a letter or number)")
       .nullable(),
   ),
+  periodStart: optionalDay,
+  periodEnd: optionalDay,
   referralCode: z.preprocess(
     (v) => (typeof v === "string" ? v.trim().toUpperCase() || null : null),
     z
@@ -88,6 +108,9 @@ const influencerSchema = z.object({
       .regex(REFERRAL_CODE_PATTERN, "Use 2-24 letters, numbers, - or _")
       .nullable(),
   ),
+}).refine((v) => !v.periodStart || !v.periodEnd || v.periodEnd >= v.periodStart, {
+  message: "End date must be on or after the start date",
+  path: ["periodEnd"],
 });
 
 const referralTakenError = (code: string, formData: FormData): FormState => ({
@@ -101,6 +124,7 @@ const slugTakenError = (slug: string, formData: FormData): FormState => ({
 });
 
 export async function createInfluencer(_prev: FormState, formData: FormData): Promise<FormState> {
+  await requireAdmin();
   const parsed = influencerSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { errors: z.flattenError(parsed.error).fieldErrors, values: formValues(formData) };
@@ -133,6 +157,7 @@ export async function updateInfluencer(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
+  await requireAdmin();
   const parsed = influencerSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { errors: z.flattenError(parsed.error).fieldErrors, values: formValues(formData) };
@@ -162,18 +187,21 @@ export async function updateInfluencer(
 }
 
 export async function setInfluencerActive(id: string, isActive: boolean) {
+  await requireAdmin();
   await prisma.influencer.update({ where: { id }, data: { isActive } });
   refresh();
 }
 
 export async function deleteInfluencer(id: string) {
+  await requireAdmin();
   await prisma.influencer.delete({ where: { id } });
-  redirect("/influencers");
+  redirect(routes.influencers);
 }
 
 // ---------- Links ----------
 
 export async function setLinkActive(id: string, isActive: boolean) {
+  await requireAdmin();
   await prisma.link.update({ where: { id }, data: { isActive } });
   refresh();
 }
@@ -192,6 +220,7 @@ export async function saveSignupCount(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
+  await requireAdmin();
   const parsed = signupCountSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { errors: z.flattenError(parsed.error).fieldErrors, values: formValues(formData) };
@@ -212,6 +241,7 @@ export async function saveSignupCount(
 }
 
 export async function deleteSignupCount(id: string) {
+  await requireAdmin();
   await prisma.signupCount.delete({ where: { id } });
   refresh();
 }

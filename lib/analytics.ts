@@ -242,12 +242,6 @@ export async function getSignupSummary(range: RangeKey, filter: Filter = {}) {
   return { signups, prevSignups };
 }
 
-/** All-time signups per influencer, for the influencers table. */
-export async function getSignupTotalsByInfluencer() {
-  const rows = await prisma.signupCount.groupBy({ by: ["influencerId"], _sum: { count: true } });
-  return new Map(rows.map((r) => [r.influencerId, r._sum.count ?? 0]));
-}
-
 /** "12%" signups per click, or null when there are no clicks. */
 export function conversionRate(signups: number, clicks: number) {
   return clicks > 0 ? `${Math.round((signups / clicks) * 100)}%` : null;

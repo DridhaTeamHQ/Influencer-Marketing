@@ -46,19 +46,23 @@ import {
   RANGES,
 } from "@/lib/analytics";
 import {
-  OTHERS_LABEL,
-  PLATFORM_LABELS,
   deviceLabel,
   formatCompact,
   formatDate,
   formatNumber,
+  formatPeriod,
   initials,
+  OTHERS_LABEL,
+  PERIOD_BADGE,
+  periodStatus,
+  PLATFORM_LABELS,
   timeAgo,
 } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { DOWNLOAD_URL, getBaseUrl, trackingUrl } from "@/lib/tracking";
+import { routes } from "@/lib/routes";
 
-type Props = PageProps<"/influencers/[id]">;
+type Props = PageProps<"/dridha/influencers/[id]">;
 
 export default function InfluencerPage(props: Props) {
   return (
@@ -68,7 +72,7 @@ export default function InfluencerPage(props: Props) {
         size="sm"
         className="mb-4 -ml-2 text-muted-foreground"
         nativeButton={false}
-        render={<Link href="/influencers" />}
+        render={<Link href={routes.influencers} />}
       >
         <ChevronLeftIcon data-icon="inline-start" />
         Influencers
@@ -133,6 +137,8 @@ async function InfluencerDetail({
 
   if (!influencer) notFound();
   const link = influencer.link;
+  const period = formatPeriod(influencer.periodStart, influencer.periodEnd);
+  const periodState = periodStatus(influencer.periodStart, influencer.periodEnd);
   const url = link ? trackingUrl(baseUrl, link.code) : null;
 
   return (
@@ -150,13 +156,20 @@ async function InfluencerDetail({
                 {influencer.name}
               </h1>
               {!influencer.isActive && <Badge variant="outline">Paused</Badge>}
+              {period && periodState && (
+                <Badge variant="secondary" className={PERIOD_BADGE[periodState]}>
+                  {periodState}
+                </Badge>
+              )}
             </div>
             <p className="truncate text-sm text-muted-foreground">
               {PLATFORM_LABELS[influencer.platform]}
               {influencer.handle && ` · @${influencer.handle}`}
               {influencer.followers != null &&
                 ` · ${formatCompact(influencer.followers)} followers`}
-              {` · Added ${formatDate(influencer.createdAt)}`}
+              {period
+                ? ` · Campaign ${period}`
+                : ` · Added ${formatDate(influencer.createdAt)}`}
             </p>
           </div>
         </div>
@@ -250,7 +263,7 @@ async function InfluencerDetail({
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold tracking-tight">Analytics</h2>
-        <RangeTabs value={range} basePath={`/influencers/${id}`} />
+        <RangeTabs value={range} basePath={routes.influencer(id)} />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">

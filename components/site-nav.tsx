@@ -3,7 +3,9 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LinkIcon } from "lucide-react";
+import { LinkIcon, LogOutIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { logout } from "@/app/dridha/login/actions";
 import {
   NavigationMenu,
   NavigationMenuItem,
@@ -12,17 +14,18 @@ import {
   navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu";
 import { cn } from "@/lib/utils";
+import { routes } from "@/lib/routes";
 
 const items = [
-  { href: "/", label: "Dashboard" },
-  { href: "/influencers", label: "Influencers" },
+  { href: routes.dashboard, label: "Dashboard" },
+  { href: routes.influencers, label: "Influencers" },
 ];
 
 export function SiteNav() {
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/70 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
+        <Link href={routes.dashboard} className="flex items-center gap-2 font-semibold tracking-tight">
           <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <LinkIcon className="size-3.5" />
           </span>
@@ -33,6 +36,13 @@ export function SiteNav() {
         <Suspense fallback={<NavLinks pathname={null} />}>
           <ActiveNavLinks />
         </Suspense>
+
+        <form action={logout} className="ml-auto">
+          <Button type="submit" variant="ghost" size="sm" className="text-muted-foreground">
+            <LogOutIcon data-icon="inline-start" />
+            <span className="hidden sm:inline">Log out</span>
+          </Button>
+        </form>
       </div>
     </header>
   );
@@ -44,11 +54,11 @@ function ActiveNavLinks() {
 
 function NavLinks({ pathname }: { pathname: string | null }) {
   return (
-    <NavigationMenu className="ml-auto sm:ml-4">
+    <NavigationMenu className="sm:ml-4">
       <NavigationMenuList className="gap-0.5">
         {items.map((item) => {
           const active =
-            pathname !== null && (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href));
+            pathname !== null && (item.href === routes.dashboard ? pathname === routes.dashboard : pathname.startsWith(item.href));
           return (
             <NavigationMenuItem key={item.href}>
               <NavigationMenuLink

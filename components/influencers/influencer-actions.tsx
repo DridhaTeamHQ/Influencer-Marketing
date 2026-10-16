@@ -23,6 +23,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { deleteInfluencer, setInfluencerActive } from "@/app/actions";
+import { routes } from "@/lib/routes";
 
 export function InfluencerActions({
   id,
@@ -58,7 +59,7 @@ export function InfluencerActions({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
           {showView && (
-            <DropdownMenuItem render={<Link href={`/influencers/${id}`} />}>View analytics</DropdownMenuItem>
+            <DropdownMenuItem render={<Link href={routes.influencer(id)} />}>View analytics</DropdownMenuItem>
           )}
           <DropdownMenuItem onClick={toggleActive}>{isActive ? "Pause tracking" : "Resume tracking"}</DropdownMenuItem>
           <DropdownMenuSeparator />
