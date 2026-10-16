@@ -167,6 +167,9 @@ async function InfluencerList() {
                             /r/{link.code}
                           </code>
                           <CopyButton value={url} />
+                          {(!link.isActive || !inf.isActive) && (
+                            <Badge variant="outline">Paused</Badge>
+                          )}
                         </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">
@@ -190,7 +193,7 @@ async function InfluencerList() {
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">
                       {inf.isActive ? (
-                        <Badge variant="secondary" className="bg-primary/10 text-primary">
+                        <Badge variant="secondary" className="bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary-foreground">
                           <span className="size-1.5 rounded-full bg-primary" />
                           Active
                         </Badge>
@@ -236,3 +239,4 @@ function PeriodCell({ start, end }: { start: Date | null; end: Date | null }) {
     </div>
   );
 }
+

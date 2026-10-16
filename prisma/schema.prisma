@@ -64,6 +64,15 @@ model Link {
   clicks     Click[]
 }
 
+/// Link names used before (influencer deleted or link renamed). They are never given to anyone else.
+model RetiredCode {
+  code           String   @id
+  /// Who used it. Kept after deletion so the original influencer can take it back if renamed.
+  influencerId   String?
+  influencerName String
+  retiredAt      DateTime @default(now())
+}
+
 /// Referral signups for one influencer on one day, copied from the referral portal.
 model SignupCount {
   id           String   @id @default(cuid())

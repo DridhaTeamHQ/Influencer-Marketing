@@ -162,6 +162,9 @@ export function InfluencerFormDialog({
                 />
                 <FieldError errors={err("periodEnd")} />
               </Field>
+              <FieldDescription className="sm:col-span-2 -mt-2">
+                For reference only. The link stays active until you pause it.
+              </FieldDescription>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">

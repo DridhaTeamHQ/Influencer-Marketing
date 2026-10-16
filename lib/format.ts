@@ -59,7 +59,7 @@ export function formatPeriod(start: Date | null, end: Date | null) {
 /** Badge colors for each campaign status. */
 export const PERIOD_BADGE = {
   Upcoming: "bg-chart-3/10 text-chart-3",
-  Running: "bg-primary/10 text-primary",
+  Running: "bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary-foreground",
   Ended: "bg-muted text-muted-foreground",
 } as const;
 

@@ -44,7 +44,7 @@ export function InfluencerActions({
       await setInfluencerActive(id, !isActive);
       toast.add({
         title: isActive ? `${name} paused` : `${name} reactivated`,
-        description: isActive ? "Their links still redirect, but clicks aren't counted." : undefined,
+        description: isActive ? "Their link now shows \"This link isn't available\"." : undefined,
       });
     });
   }
@@ -74,7 +74,7 @@ export function InfluencerActions({
           <DialogHeader>
             <DialogTitle>Delete {name}?</DialogTitle>
             <DialogDescription>
-              Their tracking links will stop working and all click history will be removed. This can&apos;t be undone.
+              Their link will show &ldquo;This link has expired&rdquo; and its name can&apos;t be given to anyone else. All click history is removed. This can&apos;t be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

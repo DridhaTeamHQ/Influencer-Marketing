@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { LinkIcon } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoginForm } from "./login-form";
 
@@ -8,7 +9,10 @@ export const metadata: Metadata = { title: "Sign in · Influencer Links" };
 
 export default function LoginPage() {
   return (
-    <main className="flex flex-1 items-center justify-center bg-muted/40 px-4 py-12">
+    <main className="relative flex flex-1 items-center justify-center bg-muted/40 px-4 py-12">
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
       <div className="w-full max-w-sm space-y-6">
         <div className="flex items-center justify-center gap-2 font-semibold tracking-tight">
           <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">

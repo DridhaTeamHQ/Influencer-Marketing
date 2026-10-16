@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 /** Accent colors match the chart series: Android, iOS, others, signups. */
 const ACCENTS = {
-  primary: "bg-primary/10 text-primary",
+  primary: "bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary-foreground",
   android: "bg-chart-2/15 text-chart-2",
   ios: "bg-chart-1/15 text-chart-1",
   others: "bg-chart-3/15 text-chart-3",
@@ -51,7 +51,7 @@ export function StatCard({
             className={cn(
               "inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 font-medium",
               change === null || change > 0
-                ? "bg-primary/10 text-primary"
+                ? "bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary-foreground"
                 : change < 0
                   ? "bg-destructive/10 text-destructive"
                   : "bg-muted text-foreground",

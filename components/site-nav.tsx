@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LinkIcon, LogOutIcon } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { logout } from "@/app/dridha/login/actions";
 import {
@@ -37,12 +38,15 @@ export function SiteNav() {
           <ActiveNavLinks />
         </Suspense>
 
-        <form action={logout} className="ml-auto">
-          <Button type="submit" variant="ghost" size="sm" className="text-muted-foreground">
-            <LogOutIcon data-icon="inline-start" />
-            <span className="hidden sm:inline">Log out</span>
-          </Button>
-        </form>
+        <div className="ml-auto flex items-center gap-1">
+          <ThemeToggle />
+          <form action={logout}>
+            <Button type="submit" variant="ghost" size="sm" className="text-muted-foreground">
+              <LogOutIcon data-icon="inline-start" />
+              <span className="hidden sm:inline">Log out</span>
+            </Button>
+          </form>
+        </div>
       </div>
     </header>
   );

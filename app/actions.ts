@@ -47,12 +47,43 @@ function slugify(value: string) {
     .slice(0, 40);
 }
 
-async function isSlugTaken(db: Prisma.TransactionClient, code: string, exceptLinkId?: string) {
-  const link = await db.link.findFirst({
-    where: { code: { equals: code, mode: "insensitive" }, ...(exceptLinkId ? { NOT: { id: exceptLinkId } } : {}) },
-    select: { id: true },
+/**
+ * A link name is taken if another influencer has it now, or if it was ever used before
+ * (deleted or renamed). Only the influencer who used it before may take an old name back.
+ */
+async function isSlugTaken(
+  db: Prisma.TransactionClient,
+  code: string,
+  owner?: { linkId: string; influencerId: string },
+) {
+  const [link, retired] = await Promise.all([
+    db.link.findFirst({
+      where: {
+        code: { equals: code, mode: "insensitive" },
+        ...(owner ? { NOT: { id: owner.linkId } } : {}),
+      },
+      select: { id: true },
+    }),
+    db.retiredCode.findFirst({
+      where: { code: { equals: code, mode: "insensitive" } },
+      select: { influencerId: true },
+    }),
+  ]);
+  if (link) return true;
+  return !!retired && retired.influencerId !== owner?.influencerId;
+}
+
+/** Remembers a link name so it can never be handed to another influencer. */
+async function retireCode(
+  db: Prisma.TransactionClient,
+  code: string,
+  influencer: { id: string; name: string },
+) {
+  await db.retiredCode.upsert({
+    where: { code },
+    create: { code, influencerId: influencer.id, influencerName: influencer.name },
+    update: { influencerId: influencer.id, influencerName: influencer.name, retiredAt: new Date() },
   });
-  return !!link;
 }
 
 /** Picks a free link name based on the handle or name, e.g. "bharani", "bharani-2", … */
@@ -119,7 +150,7 @@ const referralTakenError = (code: string, formData: FormData): FormState => ({
 });
 
 const slugTakenError = (slug: string, formData: FormData): FormState => ({
-  errors: { slug: [`/r/${slug} is already used by another influencer`] },
+  errors: { slug: [`/r/${slug} is already used, or was used before, by another influencer`] },
   values: formValues(formData),
 });
 
@@ -165,7 +196,12 @@ export async function updateInfluencer(
   const { slug, referralCode, ...data } = parsed.data;
   const link = await prisma.link.findUnique({ where: { influencerId: id }, select: { id: true, code: true } });
 
-  if (slug && link && slug !== link.code && (await isSlugTaken(prisma, slug, link.id))) {
+  if (
+    slug &&
+    link &&
+    slug !== link.code &&
+    (await isSlugTaken(prisma, slug, { linkId: link.id, influencerId: id }))
+  ) {
     return slugTakenError(slug, formData);
   }
   if (referralCode && (await isReferralCodeTaken(prisma, referralCode, id))) {
@@ -176,6 +212,9 @@ export async function updateInfluencer(
     // An empty referral code field keeps the current code.
     await tx.influencer.update({ where: { id }, data: { ...data, ...(referralCode ? { referralCode } : {}) } });
     if (slug && link && slug !== link.code) {
+      // The old name stops working and stays reserved for this influencer.
+      await retireCode(tx, link.code, { id, name: data.name });
+      await tx.retiredCode.deleteMany({ where: { code: { equals: slug, mode: "insensitive" }, influencerId: id } });
       await tx.link.update({ where: { id: link.id }, data: { code: slug } });
     } else if (!link) {
       await tx.link.create({ data: { influencerId: id, code: slug ?? (await suggestSlug(tx, data.handle ?? data.name)) } });
@@ -194,7 +233,16 @@ export async function setInfluencerActive(id: string, isActive: boolean) {
 
 export async function deleteInfluencer(id: string) {
   await requireAdmin();
-  await prisma.influencer.delete({ where: { id } });
+  await prisma.$transaction(async (tx) => {
+    const influencer = await tx.influencer.findUnique({
+      where: { id },
+      select: { id: true, name: true, link: { select: { code: true } } },
+    });
+    if (!influencer) return;
+    // Keep the link name reserved: it will show "expired" and can't be given to anyone else.
+    if (influencer.link) await retireCode(tx, influencer.link.code, influencer);
+    await tx.influencer.delete({ where: { id } });
+  });
   redirect(routes.influencers);
 }
 

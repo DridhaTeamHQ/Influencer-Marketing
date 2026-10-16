@@ -210,7 +210,14 @@ async function InfluencerDetail({
         <CardContent className="space-y-2">
           {link && url ? (
             <div className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center">
-              <p className="min-w-0 flex-1 truncate font-mono text-sm">{url}</p>
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="truncate font-mono text-sm">{url}</p>
+                {(!link.isActive || !influencer.isActive) && (
+                  <p className="text-xs text-muted-foreground">
+                    Paused: visitors see &ldquo;This link isn&apos;t available&rdquo;.
+                  </p>
+                )}
+              </div>
               <div className="flex items-center gap-3">
                 <span className="text-sm tabular-nums text-muted-foreground">
                   {formatNumber(totalClicks)} clicks all time

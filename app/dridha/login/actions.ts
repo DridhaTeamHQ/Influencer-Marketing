@@ -11,16 +11,16 @@ import {
 } from "@/lib/auth";
 import { routes } from "@/lib/routes";
 
-export type LoginState = { error?: string; username?: string };
+export type LoginState = { error?: string; email?: string };
 
 export async function login(_prev: LoginState, formData: FormData): Promise<LoginState> {
-  const username = String(formData.get("username") ?? "");
+  const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
 
-  if (!checkCredentials(username, password)) {
+  if (!checkCredentials(email, password)) {
     // Small delay to slow down password guessing.
     await new Promise((resolve) => setTimeout(resolve, 600));
-    return { error: "Incorrect username or password", username };
+    return { error: "Incorrect email or password", email };
   }
 
   (await cookies()).set(SESSION_COOKIE, createSessionToken(), {
