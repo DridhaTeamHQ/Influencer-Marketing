@@ -6,6 +6,7 @@ import {
   LinkIcon,
   MonitorIcon,
   MousePointerClickIcon,
+  PencilIcon,
   SmartphoneIcon,
   UsersIcon,
 } from "lucide-react";
@@ -16,8 +17,10 @@ import { RangeTabs } from "@/components/analytics/range-tabs";
 import { StatCard } from "@/components/analytics/stat-card";
 import { CopyButton } from "@/components/copy-button";
 import { PageHeader } from "@/components/page-header";
+import { PartnerLinkDialog } from "@/components/partners/partner-link-dialog";
 import { PartnerLinkSwitch } from "@/components/partners/partner-link-switch";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardAction,
@@ -127,7 +130,18 @@ async function LinkedInDetail({
           </span>
         }
         description={DESCRIPTION}
-      />
+      >
+        <PartnerLinkDialog
+          link={link}
+          linkPrefix={`${baseUrl.replace(/^https?:\/\//, "")}/go/`}
+          trigger={
+            <Button variant="outline">
+              <PencilIcon data-icon="inline-start" />
+              Edit
+            </Button>
+          }
+        />
+      </PageHeader>
 
       <Card size="sm">
         <CardHeader>

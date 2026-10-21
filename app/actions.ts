@@ -301,3 +301,31 @@ export async function setPartnerLinkActive(id: string, isActive: boolean) {
   await prisma.partnerLink.update({ where: { id }, data: { isActive } });
   refresh();
 }
+
+const partnerLinkSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(100),
+  slug: z.preprocess(
+    (v) => (typeof v === "string" ? v.trim().toLowerCase() : v),
+    z.string().regex(SLUG_PATTERN, "Use 2-40 lowercase letters, numbers, - or _ (start with a letter or number)"),
+  ),
+  destinationUrl: z.url({ protocol: /^https?$/, error: "Enter a full link starting with https://" }),
+});
+
+export async function updatePartnerLink(id: string, _prev: FormState, formData: FormData): Promise<FormState> {
+  await requireAdmin();
+  const parsed = partnerLinkSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { errors: z.flattenError(parsed.error).fieldErrors, values: formValues(formData) };
+  }
+  const taken = await prisma.partnerLink.findFirst({
+    where: { slug: { equals: parsed.data.slug, mode: "insensitive" }, NOT: { id } },
+    select: { id: true },
+  });
+  if (taken) {
+    return { errors: { slug: [`/go/${parsed.data.slug} is already used by another link`] }, values: formValues(formData) };
+  }
+
+  await prisma.partnerLink.update({ where: { id }, data: parsed.data });
+  refresh();
+  return { ok: true, message: "Link updated" };
+}
