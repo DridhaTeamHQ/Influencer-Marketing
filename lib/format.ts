@@ -40,6 +40,9 @@ const full = new Intl.NumberFormat("en");
 export const formatNumber = (n: number) => full.format(n);
 export const formatCompact = (n: number) => compact.format(n);
 
+/** "1 unique visitor", "3 unique visitors". */
+export const uniqueVisitors = (n: number) => `${full.format(n)} unique visitor${n === 1 ? "" : "s"}`;
+
 export function formatDate(date: Date, timeZone?: string) {
   return date.toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric", timeZone });
 }

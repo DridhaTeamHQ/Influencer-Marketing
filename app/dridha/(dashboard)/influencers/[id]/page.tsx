@@ -13,6 +13,7 @@ import {
   SmartphoneIcon,
   TicketIcon,
   UserPlusIcon,
+  UsersIcon,
 } from "lucide-react";
 import { BreakdownList } from "@/components/analytics/breakdown-list";
 import { DailyBarChart } from "@/components/analytics/daily-bar-chart";
@@ -70,6 +71,7 @@ import {
   periodStatus,
   PLATFORM_LABELS,
   timeAgo,
+  uniqueVisitors,
 } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { DOWNLOAD_URL, getBaseUrl, trackingUrl } from "@/lib/tracking";
@@ -325,14 +327,22 @@ async function InfluencerDetail({
         </div>
 
         <TabsContent value="overview" className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <StatCard
               icon={<MousePointerClickIcon />}
               accent="primary"
               label="Total clicks"
               value={formatNumber(summary.clicks)}
               change={percentChange(summary.clicks, summary.prevClicks)}
-              hint={`${formatNumber(summary.unique)} unique visitors`}
+              hint={`vs previous ${days} days`}
+            />
+            <StatCard
+              icon={<UsersIcon />}
+              accent="primary"
+              label="Unique visitors"
+              value={formatNumber(summary.unique)}
+              change={percentChange(summary.unique, summary.prevUnique)}
+              hint={`Android ${formatNumber(summary.uniqueAndroid)} · iOS ${formatNumber(summary.uniqueIos)} · Others ${formatNumber(summary.uniqueOthers)}`}
             />
             <StatCard
               icon={<SmartphoneIcon />}
@@ -340,7 +350,7 @@ async function InfluencerDetail({
               label="Android"
               value={formatNumber(summary.android)}
               change={percentChange(summary.android, summary.prevAndroid)}
-              hint={`vs previous ${days} days`}
+              hint={uniqueVisitors(summary.uniqueAndroid)}
             />
             <StatCard
               icon={<AppleIcon />}
@@ -348,7 +358,7 @@ async function InfluencerDetail({
               label="iOS"
               value={formatNumber(summary.ios)}
               change={percentChange(summary.ios, summary.prevIos)}
-              hint={`vs previous ${days} days`}
+              hint={uniqueVisitors(summary.uniqueIos)}
             />
             <StatCard
               icon={<MonitorIcon />}
@@ -356,7 +366,7 @@ async function InfluencerDetail({
               label={OTHERS_LABEL}
               value={formatNumber(summary.others)}
               change={percentChange(summary.others, summary.prevOthers)}
-              hint={`Windows ${formatNumber(summary.windows)} · Mac ${formatNumber(summary.mac)}`}
+              hint={`${formatNumber(summary.uniqueOthers)} unique · Windows ${formatNumber(summary.windows)} · Mac ${formatNumber(summary.mac)}`}
             />
             <StatCard
               icon={<UserPlusIcon />}
@@ -601,8 +611,8 @@ function DetailSkeleton() {
         </div>
       </div>
       <Skeleton className="h-40 rounded-xl" />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        {Array.from({ length: 5 }, (_, i) => (
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }, (_, i) => (
           <Skeleton key={i} className="h-28 rounded-xl" />
         ))}
       </div>

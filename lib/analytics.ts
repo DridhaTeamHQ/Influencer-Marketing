@@ -43,6 +43,9 @@ type SummaryRow = {
   mac: number;
   unique: number;
   prevUnique: number;
+  uniqueAndroid: number;
+  uniqueIos: number;
+  uniqueOthers: number;
   clicksToday: number;
 };
 
@@ -66,6 +69,9 @@ export async function getSummary(range: RangeKey, filter: Filter = {}) {
       count(*) FILTER (WHERE cur AND c.os = 'macOS')::int               AS "mac",
       count(DISTINCT c."visitorId") FILTER (WHERE cur)::int             AS "unique",
       count(DISTINCT c."visitorId") FILTER (WHERE NOT cur)::int         AS "prevUnique",
+      count(DISTINCT c."visitorId") FILTER (WHERE cur AND c.device = 'ANDROID')::int AS "uniqueAndroid",
+      count(DISTINCT c."visitorId") FILTER (WHERE cur AND c.device = 'IOS')::int     AS "uniqueIos",
+      count(DISTINCT c."visitorId") FILTER (WHERE cur AND c.device NOT IN ('ANDROID', 'IOS'))::int AS "uniqueOthers",
       count(*) FILTER (WHERE c."createdAt" >= ${today})::int            AS "clicksToday"
     FROM (
       SELECT *, "createdAt" >= ${start} AS cur FROM "Click"
@@ -334,7 +340,10 @@ export async function getPartnerSummary(range: RangeKey, linkId: string) {
       count(*) FILTER (WHERE cur AND c.referrer LIKE '%linkedin%')::int     AS "linkedin",
       count(*) FILTER (WHERE NOT cur AND c.referrer LIKE '%linkedin%')::int AS "prevLinkedin",
       count(DISTINCT c."visitorId") FILTER (WHERE cur)::int             AS "unique",
-      count(DISTINCT c."visitorId") FILTER (WHERE NOT cur)::int         AS "prevUnique"
+      count(DISTINCT c."visitorId") FILTER (WHERE NOT cur)::int         AS "prevUnique",
+      count(DISTINCT c."visitorId") FILTER (WHERE cur AND c.device = 'ANDROID')::int AS "uniqueAndroid",
+      count(DISTINCT c."visitorId") FILTER (WHERE cur AND c.device = 'IOS')::int     AS "uniqueIos",
+      count(DISTINCT c."visitorId") FILTER (WHERE cur AND c.device NOT IN ('ANDROID', 'IOS'))::int AS "uniqueOthers"
     FROM (
       SELECT *, "createdAt" >= ${start} AS cur FROM "PartnerClick"
     ) c

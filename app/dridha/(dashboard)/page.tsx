@@ -35,7 +35,7 @@ import {
   RANGES,
   type LeaderboardRow,
 } from "@/lib/analytics";
-import { formatNumber, OTHERS_LABEL } from "@/lib/format";
+import { formatNumber, OTHERS_LABEL, uniqueVisitors } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { routes } from "@/lib/routes";
 
@@ -97,14 +97,22 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dridha">[
       </PageHeader>
 
       <div className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <StatCard
             icon={<MousePointerClickIcon />}
             accent="primary"
             label="Total clicks"
             value={formatNumber(summary.clicks)}
             change={percentChange(summary.clicks, summary.prevClicks)}
-            hint={`${formatNumber(summary.unique)} unique · ${formatNumber(summary.clicksToday)} today`}
+            hint={`${formatNumber(summary.clicksToday)} today`}
+          />
+          <StatCard
+            icon={<UsersIcon />}
+            accent="primary"
+            label="Unique visitors"
+            value={formatNumber(summary.unique)}
+            change={percentChange(summary.unique, summary.prevUnique)}
+            hint={`Android ${formatNumber(summary.uniqueAndroid)} · iOS ${formatNumber(summary.uniqueIos)} · Others ${formatNumber(summary.uniqueOthers)}`}
           />
           <StatCard
             icon={<SmartphoneIcon />}
@@ -112,7 +120,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dridha">[
             label="Android"
             value={formatNumber(summary.android)}
             change={percentChange(summary.android, summary.prevAndroid)}
-            hint={vsPrev}
+            hint={uniqueVisitors(summary.uniqueAndroid)}
           />
           <StatCard
             icon={<AppleIcon />}
@@ -120,7 +128,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dridha">[
             label="iOS"
             value={formatNumber(summary.ios)}
             change={percentChange(summary.ios, summary.prevIos)}
-            hint={vsPrev}
+            hint={uniqueVisitors(summary.uniqueIos)}
           />
           <StatCard
             icon={<MonitorIcon />}
@@ -128,7 +136,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dridha">[
             label={OTHERS_LABEL}
             value={formatNumber(summary.others)}
             change={percentChange(summary.others, summary.prevOthers)}
-            hint={`Windows ${formatNumber(summary.windows)} · Mac ${formatNumber(summary.mac)}`}
+            hint={`${formatNumber(summary.uniqueOthers)} unique · Windows ${formatNumber(summary.windows)} · Mac ${formatNumber(summary.mac)}`}
           />
           <StatCard
             icon={<UserPlusIcon />}
@@ -294,8 +302,8 @@ function DashboardSkeleton() {
     <>
       <PageHeader title="Dashboard" description={DESCRIPTION} />
       <div className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          {Array.from({ length: 5 }, (_, i) => (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }, (_, i) => (
             <Skeleton key={i} className="h-32 rounded-xl" />
           ))}
         </div>

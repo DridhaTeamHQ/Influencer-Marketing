@@ -1,5 +1,6 @@
 import { ArrowDownRightIcon, ArrowUpRightIcon } from "lucide-react";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 /** Accent colors match the chart series: Android, iOS, others, signups. */
@@ -71,7 +72,15 @@ export function StatCard({
             )}
           </span>
         )}
-        {hint && <span className="truncate">{hint}</span>}
+        {hint && (
+          // Hints get cut off on narrow cards; hovering shows the full text.
+          <Tooltip>
+            <TooltipTrigger render={<span />} className="min-w-0 cursor-default truncate">
+              {hint}
+            </TooltipTrigger>
+            <TooltipContent>{hint}</TooltipContent>
+          </Tooltip>
+        )}
       </CardContent>
     </Card>
   );

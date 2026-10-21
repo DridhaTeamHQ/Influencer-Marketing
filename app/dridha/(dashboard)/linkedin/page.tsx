@@ -44,7 +44,7 @@ import {
   percentChange,
   RANGES,
 } from "@/lib/analytics";
-import { deviceLabel, formatNumber, OTHERS_LABEL, timeAgo } from "@/lib/format";
+import { deviceLabel, formatNumber, OTHERS_LABEL, timeAgo, uniqueVisitors } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { routes } from "@/lib/routes";
 import { getBaseUrl, partnerUrl } from "@/lib/tracking";
@@ -176,7 +176,7 @@ async function LinkedInDetail({
           label="Total clicks"
           value={formatNumber(summary.clicks)}
           change={percentChange(summary.clicks, summary.prevClicks)}
-          hint={`vs previous ${days} days`}
+          hint={`${formatNumber(summary.linkedin)} came from linkedin.com`}
         />
         <StatCard
           icon={<UsersIcon />}
@@ -184,7 +184,7 @@ async function LinkedInDetail({
           label="Unique visitors"
           value={formatNumber(summary.unique)}
           change={percentChange(summary.unique, summary.prevUnique)}
-          hint={`${formatNumber(summary.linkedin)} clicks came from linkedin.com`}
+          hint={`Android ${formatNumber(summary.uniqueAndroid)} · iOS ${formatNumber(summary.uniqueIos)} · Others ${formatNumber(summary.uniqueOthers)}`}
         />
         <StatCard
           icon={<SmartphoneIcon />}
@@ -192,7 +192,7 @@ async function LinkedInDetail({
           label="Android"
           value={formatNumber(summary.android)}
           change={percentChange(summary.android, summary.prevAndroid)}
-          hint={`vs previous ${days} days`}
+          hint={uniqueVisitors(summary.uniqueAndroid)}
         />
         <StatCard
           icon={<AppleIcon />}
@@ -200,7 +200,7 @@ async function LinkedInDetail({
           label="iOS"
           value={formatNumber(summary.ios)}
           change={percentChange(summary.ios, summary.prevIos)}
-          hint={`vs previous ${days} days`}
+          hint={uniqueVisitors(summary.uniqueIos)}
         />
         <StatCard
           icon={<MonitorIcon />}
@@ -208,7 +208,7 @@ async function LinkedInDetail({
           label={OTHERS_LABEL}
           value={formatNumber(summary.others)}
           change={percentChange(summary.others, summary.prevOthers)}
-          hint={`Windows ${formatNumber(summary.windows)} · Mac ${formatNumber(summary.mac)}`}
+          hint={`${formatNumber(summary.uniqueOthers)} unique · Windows ${formatNumber(summary.windows)} · Mac ${formatNumber(summary.mac)}`}
         />
       </div>
 
