@@ -2,8 +2,37 @@ import { createHash, randomBytes } from "node:crypto";
 import { headers } from "next/headers";
 import type { DeviceType } from "@/lib/generated/prisma/enums";
 
-/** Every tracking link redirects here; the page itself sends Android/iOS users to the right store. */
+/** Download page that picks the right store. Used on the "link not available" pages. */
 export const DOWNLOAD_URL = process.env.DOWNLOAD_URL ?? "https://www.dailymattr.com/download";
+
+export const PLAY_STORE_URL =
+  process.env.PLAY_STORE_URL ?? "https://play.google.com/store/apps/details?id=com.dailymattr";
+/** App Store Connect campaign link; `ct` (the campaign name) is added per influencer. */
+const APP_STORE_CAMPAIGN_URL = "https://apps.apple.com/app/apple-store/id6791996138";
+const APP_STORE_PROVIDER_TOKEN = process.env.APP_STORE_PROVIDER_TOKEN ?? "1110627";
+
+/**
+ * Store links tagged for one influencer:
+ * - Play Store: utm_source=instagram & utm_medium=influencer & utm_campaign=bharani
+ * - App Store: pt=1110627 & ct=Bharani & mt=8 (App Store Connect campaign, named after the influencer)
+ */
+export function influencerStoreUrls(influencer: { name: string; platform: string }, code: string) {
+  const android = new URL(PLAY_STORE_URL);
+  android.searchParams.set("utm_source", influencer.platform.toLowerCase());
+  android.searchParams.set("utm_medium", "influencer");
+  android.searchParams.set("utm_campaign", code.toLowerCase());
+
+  // Apple allows campaign names up to 40 characters.
+  const campaign = encodeURIComponent(influencer.name.trim().slice(0, 40));
+  const ios = `${APP_STORE_CAMPAIGN_URL}?pt=${APP_STORE_PROVIDER_TOKEN}&ct=${campaign}&mt=8`;
+
+  return { android: android.toString(), ios };
+}
+
+/** iPhone, iPad and Mac visitors go to the App Store; everyone else to the Play Store. */
+export function prefersAppStore(agent: ParsedAgent) {
+  return agent.device === "IOS" || agent.os === "macOS";
+}
 
 const ALPHABET = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 

@@ -28,7 +28,6 @@ export function PartnerLinkDialog({
     id: string;
     name: string;
     slug: string;
-    destinationUrl: string;
     androidUrl: string | null;
     iosUrl: string | null;
   };
@@ -59,7 +58,7 @@ export function PartnerLinkDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Edit link</DialogTitle>
-          <DialogDescription>Every click is counted first, then visitors go to the link for their device. Past clicks are kept.</DialogDescription>
+          <DialogDescription>Every click is counted first, then visitors go to the store for their device. Past clicks are kept.</DialogDescription>
         </DialogHeader>
 
         <form key={JSON.stringify(state.values ?? {})} action={formAction} className="space-y-6">
@@ -92,45 +91,33 @@ export function PartnerLinkDialog({
             </Field>
 
             <Field data-invalid={!!err("androidUrl") || undefined}>
-              <FieldLabel htmlFor="androidUrl">Android opens</FieldLabel>
+              <FieldLabel htmlFor="androidUrl">Play Store link</FieldLabel>
               <Input
                 id="androidUrl"
                 name="androidUrl"
                 type="url"
                 defaultValue={v("androidUrl", link.androidUrl)}
                 placeholder="https://play.google.com/store/apps/details?id=…"
+                required
                 aria-invalid={!!err("androidUrl")}
               />
+              <FieldDescription>For Android, Windows and other devices.</FieldDescription>
               <FieldError errors={err("androidUrl")} />
             </Field>
 
             <Field data-invalid={!!err("iosUrl") || undefined}>
-              <FieldLabel htmlFor="iosUrl">iPhone opens</FieldLabel>
+              <FieldLabel htmlFor="iosUrl">App Store link</FieldLabel>
               <Input
                 id="iosUrl"
                 name="iosUrl"
                 type="url"
                 defaultValue={v("iosUrl", link.iosUrl)}
                 placeholder="https://apps.apple.com/…"
+                required
                 aria-invalid={!!err("iosUrl")}
               />
+              <FieldDescription>For iPhone, iPad and Mac.</FieldDescription>
               <FieldError errors={err("iosUrl")} />
-            </Field>
-
-            <Field data-invalid={!!err("destinationUrl") || undefined}>
-              <FieldLabel htmlFor="destinationUrl">Others open</FieldLabel>
-              <Input
-                id="destinationUrl"
-                name="destinationUrl"
-                type="url"
-                defaultValue={v("destinationUrl", link.destinationUrl)}
-                required
-                aria-invalid={!!err("destinationUrl")}
-              />
-              <FieldDescription>
-                For Windows, Mac and other devices, and for phones when their store link is empty.
-              </FieldDescription>
-              <FieldError errors={err("destinationUrl")} />
             </Field>
           </FieldGroup>
 

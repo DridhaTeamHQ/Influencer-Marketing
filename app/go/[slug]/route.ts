@@ -47,10 +47,10 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/go/[slug]">)
     });
   });
 
-  // Phones go straight to their store; everything else to the destination page.
+  // Every visitor goes to a store: iPhone, iPad and Mac to the App Store, everyone else to the Play Store.
+  const prefersAppStore = agent.device === "IOS" || agent.os === "macOS";
   const location =
-    (agent.device === "ANDROID" && link.androidUrl) ||
-    (agent.device === "IOS" && link.iosUrl) ||
+    (prefersAppStore ? link.iosUrl ?? link.androidUrl : link.androidUrl ?? link.iosUrl) ??
     link.destinationUrl;
 
   return new Response(null, {

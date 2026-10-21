@@ -1,11 +1,16 @@
 import { after, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { DOWNLOAD_URL, hashVisitor, parseUserAgent } from "@/lib/tracking";
+import { hashVisitor, influencerStoreUrls, parseUserAgent, prefersAppStore } from "@/lib/tracking";
 
 export async function GET(request: NextRequest, ctx: RouteContext<"/r/[code]">) {
   const { code } = await ctx.params;
 
-  const select = { id: true, isActive: true, influencer: { select: { isActive: true } } } as const;
+  const select = {
+    id: true,
+    code: true,
+    isActive: true,
+    influencer: { select: { isActive: true, name: true, platform: true } },
+  } as const;
   // Exact match first (older random codes are mixed-case), then case-insensitive so /r/Bharani works too.
   const link =
     (await prisma.link.findUnique({ where: { code }, select })) ??
@@ -51,9 +56,12 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/r/[code]">) 
     });
   });
 
+  // Straight to the store, tagged with this influencer's UTM campaign.
+  const stores = influencerStoreUrls(link.influencer, link.code);
+
   return new Response(null, {
     status: 302,
-    headers: { Location: DOWNLOAD_URL, "Cache-Control": "no-store" },
+    headers: { Location: prefersAppStore(agent) ? stores.ios : stores.android, "Cache-Control": "no-store" },
   });
 }
 

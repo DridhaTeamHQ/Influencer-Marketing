@@ -5,6 +5,7 @@ import { connection } from "next/server";
 import {
   AppleIcon,
   ChevronLeftIcon,
+  ExternalLinkIcon,
   LinkIcon,
   MonitorIcon,
   MousePointerClickIcon,
@@ -74,7 +75,7 @@ import {
   uniqueVisitors,
 } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
-import { DOWNLOAD_URL, getBaseUrl, trackingUrl } from "@/lib/tracking";
+import { getBaseUrl, influencerStoreUrls, trackingUrl } from "@/lib/tracking";
 import { routes } from "@/lib/routes";
 
 type Props = PageProps<"/dridha/influencers/[id]">;
@@ -158,6 +159,7 @@ async function InfluencerDetail({
     influencer.periodEnd,
   );
   const url = link ? trackingUrl(baseUrl, link.code) : null;
+  const stores = link ? influencerStoreUrls(influencer, link.code) : null;
 
   return (
     <div className="space-y-6">
@@ -228,8 +230,8 @@ async function InfluencerDetail({
               Download link
             </CardTitle>
             <CardDescription>
-              Opens {DOWNLOAD_URL.replace(/^https?:\/\//, "")}, which picks the
-              right store.
+              Counts every click, then opens the App Store on iPhone, iPad and
+              Mac, and the Play Store everywhere else.
             </CardDescription>
             {link && (
               <CardAction>
@@ -251,6 +253,32 @@ async function InfluencerDetail({
                     label="Copy"
                   />
                 </div>
+                {stores && (
+                  <dl className="grid gap-1 text-xs sm:grid-cols-[auto_1fr] sm:gap-x-3">
+                    {[
+                      { label: "Play Store", href: stores.android },
+                      { label: "App Store", href: stores.ios },
+                    ].map((row) => (
+                      <div key={row.label} className="contents">
+                        <dt className="text-muted-foreground">{row.label}</dt>
+                        <dd className="min-w-0">
+                          <a
+                            href={row.href}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={row.href}
+                            className="inline-flex max-w-full items-center gap-1 font-medium underline-offset-4 hover:underline"
+                          >
+                            <span className="truncate">
+                              {row.href.replace(/^https?:\/\//, "")}
+                            </span>
+                            <ExternalLinkIcon className="size-3 shrink-0" />
+                          </a>
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
                 <p className="text-xs text-muted-foreground">
                   {!link.isActive || !influencer.isActive
                     ? "Paused: visitors see \u201cThis link isn\u2019t available\u201d."

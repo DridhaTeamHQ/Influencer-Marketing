@@ -149,7 +149,9 @@ async function LinkedInDetail({
             <LinkIcon className="size-4 text-primary" />
             Tracking link
           </CardTitle>
-          <CardDescription>Counts every click, then opens the link for the visitor&apos;s device.</CardDescription>
+          <CardDescription>
+            Counts every click, then opens the App Store on iPhone, iPad and Mac, and the Play Store everywhere else.
+          </CardDescription>
           <CardAction>
             <PartnerLinkSwitch id={link.id} isActive={link.isActive} />
           </CardAction>
@@ -161,9 +163,8 @@ async function LinkedInDetail({
           </div>
           <dl className="grid gap-1 text-xs sm:grid-cols-[auto_1fr] sm:gap-x-3">
             {[
-              { label: "Android", href: link.androidUrl ?? link.destinationUrl },
-              { label: "iPhone", href: link.iosUrl ?? link.destinationUrl },
-              { label: OTHERS_LABEL, href: link.destinationUrl },
+              { label: "Play Store", href: link.androidUrl ?? link.iosUrl ?? link.destinationUrl },
+              { label: "App Store", href: link.iosUrl ?? link.androidUrl ?? link.destinationUrl },
             ].map((row) => (
               <div key={row.label} className="contents">
                 <dt className="text-muted-foreground">{row.label}</dt>

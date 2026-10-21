@@ -159,11 +159,11 @@ model PartnerLink {
   name           String
   /// Where the post is shared, e.g. "LinkedIn".
   channel        String
-  /// Used for desktop and any device without its own store link below.
+  /// Only used if both store links below are empty.
   destinationUrl String
-  /// Play Store link (with UTM tags) for Android visitors.
+  /// Play Store link (with UTM tags) for Android, Windows and other visitors.
   androidUrl     String?
-  /// App Store link (with UTM tags) for iPhone / iPad visitors.
+  /// App Store link (with UTM tags) for iPhone, iPad and Mac visitors.
   iosUrl         String?
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
