@@ -313,3 +313,76 @@ export function percentChange(current: number, previous: number) {
   if (previous === 0) return current > 0 ? null : 0;
   return Math.round(((current - previous) / previous) * 100);
 }
+
+// ---------- Partner links (LinkedIn): kept apart from influencer clicks ----------
+
+type PartnerSummaryRow = Omit<SummaryRow, "clicksToday"> & { linkedin: number; prevLinkedin: number };
+
+export async function getPartnerSummary(range: RangeKey, linkId: string) {
+  const { start, prevStart } = rangeBounds(range);
+
+  const [row] = await prisma.$queryRaw<PartnerSummaryRow[]>`
+    SELECT
+      count(*) FILTER (WHERE cur)::int                                  AS "clicks",
+      count(*) FILTER (WHERE NOT cur)::int                              AS "prevClicks",
+      count(*) FILTER (WHERE cur AND c.device = 'ANDROID')::int         AS "android",
+      count(*) FILTER (WHERE NOT cur AND c.device = 'ANDROID')::int     AS "prevAndroid",
+      count(*) FILTER (WHERE cur AND c.device = 'IOS')::int             AS "ios",
+      count(*) FILTER (WHERE NOT cur AND c.device = 'IOS')::int         AS "prevIos",
+      count(*) FILTER (WHERE cur AND c.os = 'Windows')::int             AS "windows",
+      count(*) FILTER (WHERE cur AND c.os = 'macOS')::int               AS "mac",
+      count(*) FILTER (WHERE cur AND c.referrer LIKE '%linkedin%')::int     AS "linkedin",
+      count(*) FILTER (WHERE NOT cur AND c.referrer LIKE '%linkedin%')::int AS "prevLinkedin",
+      count(DISTINCT c."visitorId") FILTER (WHERE cur)::int             AS "unique",
+      count(DISTINCT c."visitorId") FILTER (WHERE NOT cur)::int         AS "prevUnique"
+    FROM (
+      SELECT *, "createdAt" >= ${start} AS cur FROM "PartnerClick"
+    ) c
+    WHERE c."isBot" = false AND c."createdAt" >= ${prevStart} AND c."linkId" = ${linkId}`;
+
+  const others = row.clicks - row.android - row.ios;
+  const prevOthers = row.prevClicks - row.prevAndroid - row.prevIos;
+  return { ...row, others, prevOthers };
+}
+
+export async function getPartnerDailyClicks(range: RangeKey, linkId: string): Promise<DailyPoint[]> {
+  const { days, start } = rangeBounds(range);
+
+  const rows = await prisma.$queryRaw<{ day: Date; clicks: number; android: number; ios: number; unique: number }[]>`
+    SELECT date_trunc('day', c."createdAt") AS day,
+           count(*)::int AS clicks,
+           count(*) FILTER (WHERE c.device = 'ANDROID')::int AS android,
+           count(*) FILTER (WHERE c.device = 'IOS')::int AS ios,
+           count(DISTINCT c."visitorId")::int AS "unique"
+    FROM "PartnerClick" c
+    WHERE c."isBot" = false AND c."createdAt" >= ${start} AND c."linkId" = ${linkId}
+    GROUP BY 1`;
+
+  const byDay = new Map(rows.map((r) => [new Date(r.day).toISOString().slice(0, 10), r]));
+
+  return Array.from({ length: days }, (_, i) => {
+    const date = new Date(start.getTime() + i * 86_400_000).toISOString().slice(0, 10);
+    const row = byDay.get(date);
+    const clicks = row?.clicks ?? 0;
+    const android = row?.android ?? 0;
+    const ios = row?.ios ?? 0;
+    return { date, clicks, android, ios, others: clicks - android - ios, unique: row?.unique ?? 0, signups: 0 };
+  });
+}
+
+export async function getPartnerTopValues(
+  field: "country" | "referrer" | "browser",
+  range: RangeKey,
+  linkId: string,
+  limit = 5,
+) {
+  const { start } = rangeBounds(range);
+  const rows = await prisma.partnerClick.groupBy({
+    by: [field],
+    where: { isBot: false, createdAt: { gte: start }, linkId },
+    _count: { _all: true },
+    orderBy: { _count: { id: "desc" } },
+    take: limit,
+  });
+  return rows.map((r) => ({ label: r[field] ?? "Unknown", clicks: r._count._all }));
+}

@@ -1,10 +1,11 @@
-/** The dashboard lives under this path; everything else on the domain (except /r/ links) goes to the main site. */
+/** The dashboard lives under this path; everything else on the domain (except /r/ and /go/ links) goes to the main site. */
 export const ADMIN_BASE = "/dridha";
 
 export const routes = {
   dashboard: ADMIN_BASE,
   influencers: `${ADMIN_BASE}/influencers`,
   influencer: (id: string) => `${ADMIN_BASE}/influencers/${id}`,
+  linkedin: `${ADMIN_BASE}/linkedin`,
   login: `${ADMIN_BASE}/login`,
 };
 

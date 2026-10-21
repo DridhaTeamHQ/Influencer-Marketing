@@ -150,3 +150,36 @@ model CouponRedemption {
   @@unique([couponId, orderId])
   @@index([couponId, userId])
 }
+
+/// Links for partner posts (e.g. Tamada Media on LinkedIn): /go/{slug} -> destinationUrl.
+/// Kept apart from influencers: their clicks never show up in the influencer dashboard.
+model PartnerLink {
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  name           String
+  /// Where the post is shared, e.g. "LinkedIn".
+  channel        String
+  destinationUrl String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  clicks PartnerClick[]
+}
+
+model PartnerClick {
+  id        String     @id @default(cuid())
+  linkId    String
+  createdAt DateTime   @default(now())
+  device    DeviceType
+  os        String?
+  browser   String?
+  country   String?
+  referrer  String?
+  /// Salted hash of IP + user agent, used for unique-visitor counts.
+  visitorId String
+  isBot     Boolean    @default(false)
+
+  link PartnerLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+
+  @@index([linkId, createdAt])
+}

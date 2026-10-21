@@ -293,3 +293,11 @@ export async function deleteSignupCount(id: string) {
   await prisma.signupCount.delete({ where: { id } });
   refresh();
 }
+
+// ---------- Partner links (LinkedIn) ----------
+
+export async function setPartnerLinkActive(id: string, isActive: boolean) {
+  await requireAdmin();
+  await prisma.partnerLink.update({ where: { id }, data: { isActive } });
+  refresh();
+}

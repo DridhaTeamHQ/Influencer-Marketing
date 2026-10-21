@@ -4,6 +4,7 @@ import { PUBLIC_SITE_URL, routes } from "@/lib/routes";
 
 /**
  * - /r/...      tracking links: public (excluded by the matcher)
+ * - /go/...     partner links (LinkedIn etc.): public
  * - /link/...   "expired" / "not available" pages for those links: public
  * - /dridha/... dashboard: needs the login
  * - anything else: sent to the main DailyMattr website
@@ -33,6 +34,6 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Skip tracking links and their status pages, API routes (they use API keys) and Next.js assets.
-    "/((?!r/|link/|api/|_next/|__nextjs|favicon.ico).*)",
+    "/((?!r/|go/|link/|api/|_next/|__nextjs|favicon.ico).*)",
   ],
 };

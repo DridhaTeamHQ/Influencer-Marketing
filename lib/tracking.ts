@@ -49,6 +49,7 @@ export function parseUserAgent(ua: string): ParsedAgent {
 
   let browser: string | null = null;
   if (/Instagram/i.test(ua)) browser = "Instagram";
+  else if (/LinkedInApp/i.test(ua)) browser = "LinkedIn";
   else if (/FBAN|FBAV/i.test(ua)) browser = "Facebook";
   else if (/musical_ly|TikTok|BytedanceWebview/i.test(ua)) browser = "TikTok";
   else if (/Edg\//i.test(ua)) browser = "Edge";
@@ -74,6 +75,10 @@ export async function getBaseUrl() {
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   return `${proto}://${host}`;
+}
+
+export function partnerUrl(baseUrl: string, slug: string) {
+  return `${baseUrl}/go/${slug}`;
 }
 
 export function trackingUrl(baseUrl: string, code: string) {

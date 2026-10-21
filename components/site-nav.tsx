@@ -20,6 +20,7 @@ import { routes } from "@/lib/routes";
 const items = [
   { href: routes.dashboard, label: "Dashboard" },
   { href: routes.influencers, label: "Influencers" },
+  { href: routes.linkedin, label: "LinkedIn" },
 ];
 
 export function SiteNav() {
