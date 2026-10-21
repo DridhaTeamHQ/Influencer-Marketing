@@ -120,7 +120,7 @@ const influencerSchema = z.object({
     z.string().max(60).transform((v) => v || null),
   ),
   email: z.preprocess(emptyToNull, z.email("Enter a valid email").nullable()),
-  platform: z.enum(["INSTAGRAM", "YOUTUBE", "TIKTOK", "X", "FACEBOOK", "OTHER"]),
+  platform: z.enum(["INSTAGRAM", "YOUTUBE", "TIKTOK", "X", "FACEBOOK", "LINKEDIN", "OTHER"]),
   followers: z.preprocess(emptyToNull, z.coerce.number().int().nonnegative().nullable()),
   notes: optionalText(1000),
   slug: z.preprocess(

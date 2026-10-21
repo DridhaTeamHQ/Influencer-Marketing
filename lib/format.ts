@@ -6,6 +6,7 @@ export const PLATFORM_LABELS: Record<SocialPlatform, string> = {
   TIKTOK: "TikTok",
   X: "X",
   FACEBOOK: "Facebook",
+  LINKEDIN: "LinkedIn",
   OTHER: "Other",
 };
 
@@ -15,6 +16,7 @@ const PROFILE_URLS: Partial<Record<SocialPlatform, (handle: string) => string>> 
   TIKTOK: (h) => `https://www.tiktok.com/@${h}`,
   X: (h) => `https://x.com/${h}`,
   FACEBOOK: (h) => `https://www.facebook.com/${h}`,
+  LINKEDIN: (h) => `https://www.linkedin.com/in/${h}/`,
 };
 
 /** Link to the influencer's profile on their platform, or null when there's no handle. */
