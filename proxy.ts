@@ -34,6 +34,6 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Skip tracking links and their status pages, API routes (they use API keys) and Next.js assets.
-    "/((?!r/|go/|link/|api/|_next/|__nextjs|favicon.ico).*)",
+    "/((?!r/|go/|link/|api/|_next/|__nextjs|favicon.ico|icon.svg).*)",
   ],
 };
