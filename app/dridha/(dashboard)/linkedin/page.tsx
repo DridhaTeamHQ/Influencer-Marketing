@@ -149,18 +149,7 @@ async function LinkedInDetail({
             <LinkIcon className="size-4 text-primary" />
             Tracking link
           </CardTitle>
-          <CardDescription className="flex flex-wrap items-center gap-1">
-            Counts every click, then opens
-            <a
-              href={link.destinationUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 font-medium text-foreground underline-offset-4 hover:underline"
-            >
-              {link.destinationUrl.replace(/^https?:\/\//, "")}
-              <ExternalLinkIcon className="size-3" />
-            </a>
-          </CardDescription>
+          <CardDescription>Counts every click, then opens the link for the visitor&apos;s device.</CardDescription>
           <CardAction>
             <PartnerLinkSwitch id={link.id} isActive={link.isActive} />
           </CardAction>
@@ -170,6 +159,29 @@ async function LinkedInDetail({
             <p className="min-w-0 flex-1 truncate font-mono text-sm">{url}</p>
             <CopyButton value={url} size="sm" variant="outline" label="Copy" />
           </div>
+          <dl className="grid gap-1 text-xs sm:grid-cols-[auto_1fr] sm:gap-x-3">
+            {[
+              { label: "Android", href: link.androidUrl ?? link.destinationUrl },
+              { label: "iPhone", href: link.iosUrl ?? link.destinationUrl },
+              { label: OTHERS_LABEL, href: link.destinationUrl },
+            ].map((row) => (
+              <div key={row.label} className="contents">
+                <dt className="text-muted-foreground">{row.label}</dt>
+                <dd className="min-w-0">
+                  <a
+                    href={row.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={row.href}
+                    className="inline-flex max-w-full items-center gap-1 font-medium underline-offset-4 hover:underline"
+                  >
+                    <span className="truncate">{row.href.replace(/^https?:\/\//, "")}</span>
+                    <ExternalLinkIcon className="size-3 shrink-0" />
+                  </a>
+                </dd>
+              </div>
+            ))}
+          </dl>
           <p className="text-xs text-muted-foreground">
             {link.isActive
               ? `${formatNumber(totalClicks)} clicks all time`

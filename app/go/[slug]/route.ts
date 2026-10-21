@@ -8,7 +8,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/go/[slug]">)
 
   const link = await prisma.partnerLink.findFirst({
     where: { slug: { equals: slug, mode: "insensitive" } },
-    select: { id: true, isActive: true, destinationUrl: true },
+    select: { id: true, isActive: true, destinationUrl: true, androidUrl: true, iosUrl: true },
   });
 
   if (!link || !link.isActive) {
@@ -47,9 +47,15 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/go/[slug]">)
     });
   });
 
+  // Phones go straight to their store; everything else to the destination page.
+  const location =
+    (agent.device === "ANDROID" && link.androidUrl) ||
+    (agent.device === "IOS" && link.iosUrl) ||
+    link.destinationUrl;
+
   return new Response(null, {
     status: 302,
-    headers: { Location: link.destinationUrl, "Cache-Control": "no-store" },
+    headers: { Location: location, "Cache-Control": "no-store" },
   });
 }
 

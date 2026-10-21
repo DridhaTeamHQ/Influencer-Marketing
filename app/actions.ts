@@ -309,6 +309,14 @@ const partnerLinkSchema = z.object({
     z.string().regex(SLUG_PATTERN, "Use 2-40 lowercase letters, numbers, - or _ (start with a letter or number)"),
   ),
   destinationUrl: z.url({ protocol: /^https?$/, error: "Enter a full link starting with https://" }),
+  androidUrl: z.preprocess(
+    emptyToNull,
+    z.url({ protocol: /^https?$/, error: "Enter a full link starting with https://" }).nullable(),
+  ),
+  iosUrl: z.preprocess(
+    emptyToNull,
+    z.url({ protocol: /^https?$/, error: "Enter a full link starting with https://" }).nullable(),
+  ),
 });
 
 export async function updatePartnerLink(id: string, _prev: FormState, formData: FormData): Promise<FormState> {
