@@ -132,10 +132,6 @@ const influencerSchema = z.object({
   ),
   periodStart: optionalDay,
   periodEnd: optionalDay,
-  appStoreUrl: z.preprocess(
-    emptyToNull,
-    z.url({ protocol: /^https?$/, error: "Enter the full App Store link starting with https://" }).max(500).nullable(),
-  ),
   referralCode: z.preprocess(
     (v) => (typeof v === "string" ? v.trim().toUpperCase() || null : null),
     z

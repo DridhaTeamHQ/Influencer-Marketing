@@ -42,7 +42,7 @@ model Influencer {
   /// Campaign period agreed with the influencer (inclusive dates).
   periodStart  DateTime?      @db.Date
   periodEnd    DateTime?      @db.Date
-  /// Own App Store link for iPhone/Mac clicks. Empty uses the App Store Connect campaign link (ct = name).
+  /// No longer used: iPhone/Mac clicks always go to the App Store Connect campaign link (ct = name).
   appStoreUrl  String?
   isActive     Boolean        @default(true)
   createdAt    DateTime       @default(now())

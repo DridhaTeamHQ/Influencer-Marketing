@@ -257,7 +257,7 @@ async function InfluencerDetail({
                   <dl className="grid gap-1 text-xs sm:grid-cols-[auto_1fr] sm:gap-x-3">
                     {[
                       { label: "Play Store", href: stores.android },
-                      { label: stores.customIos ? "App Store (own link)" : "App Store", href: stores.ios },
+                      { label: "App Store", href: stores.ios },
                     ].map((row) => (
                       <div key={row.label} className="contents">
                         <dt className="text-muted-foreground">{row.label}</dt>

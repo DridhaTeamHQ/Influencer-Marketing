@@ -38,7 +38,6 @@ export type InfluencerFormValues = {
   referralCode?: string;
   periodStart?: Date | null;
   periodEnd?: Date | null;
-  appStoreUrl?: string | null;
   link?: { code: string } | null;
 };
 
@@ -138,25 +137,6 @@ export function InfluencerFormDialog({
                   : "The code users enter at signup. Leave empty to create one from their handle or name."}
               </FieldDescription>
               <FieldError errors={err("referralCode")} />
-            </Field>
-
-            <Field data-invalid={!!err("appStoreUrl") || undefined}>
-              <FieldLabel htmlFor="appStoreUrl">App Store link</FieldLabel>
-              <Input
-                id="appStoreUrl"
-                name="appStoreUrl"
-                type="url"
-                defaultValue={v("appStoreUrl", influencer?.appStoreUrl)}
-                placeholder="https://apps.apple.com/…"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                aria-invalid={!!err("appStoreUrl")}
-              />
-              <FieldDescription>
-                Where iPhone, iPad and Mac clicks go. Leave empty to use the automatic App Store campaign link.
-              </FieldDescription>
-              <FieldError errors={err("appStoreUrl")} />
             </Field>
 
             <div className="grid gap-4 sm:grid-cols-2">
