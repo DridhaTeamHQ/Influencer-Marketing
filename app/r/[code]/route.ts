@@ -9,7 +9,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/r/[code]">) 
     id: true,
     code: true,
     isActive: true,
-    influencer: { select: { isActive: true, name: true, platform: true } },
+    influencer: { select: { isActive: true, name: true, platform: true, playStoreUrl: true, appStoreUrl: true } },
   } as const;
   // Exact match first (older random codes are mixed-case), then case-insensitive so /r/Bharani works too.
   const link =

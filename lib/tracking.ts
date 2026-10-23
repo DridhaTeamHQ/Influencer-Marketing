@@ -15,8 +15,12 @@ const APP_STORE_PROVIDER_TOKEN = process.env.APP_STORE_PROVIDER_TOKEN ?? "111062
  * Store links tagged for one influencer:
  * - Play Store: utm_source=instagram & utm_medium=influencer & utm_campaign=bharani
  * - App Store: pt=1110627 & ct=Akash%20Ojha & mt=8 (App Store Connect campaign, named after the influencer).
+ * An influencer's own link, when set, replaces the default for that store.
  */
-export function influencerStoreUrls(influencer: { name: string; platform: string }, code: string) {
+export function influencerStoreUrls(
+  influencer: { name: string; platform: string; playStoreUrl?: string | null; appStoreUrl?: string | null },
+  code: string,
+) {
   const android = new URL(PLAY_STORE_URL);
   android.searchParams.set("utm_source", influencer.platform.toLowerCase());
   android.searchParams.set("utm_medium", "influencer");
@@ -26,7 +30,12 @@ export function influencerStoreUrls(influencer: { name: string; platform: string
   const campaign = encodeURIComponent(influencer.name.trim().slice(0, 40));
   const ios = `${APP_STORE_CAMPAIGN_URL}?pt=${APP_STORE_PROVIDER_TOKEN}&ct=${campaign}&mt=8`;
 
-  return { android: android.toString(), ios };
+  return {
+    android: influencer.playStoreUrl || android.toString(),
+    ios: influencer.appStoreUrl || ios,
+    customAndroid: !!influencer.playStoreUrl,
+    customIos: !!influencer.appStoreUrl,
+  };
 }
 
 /** iPhone, iPad and Mac visitors go to the App Store; everyone else to the Play Store. */

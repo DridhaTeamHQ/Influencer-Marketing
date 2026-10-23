@@ -42,7 +42,8 @@ model Influencer {
   /// Campaign period agreed with the influencer (inclusive dates).
   periodStart  DateTime?      @db.Date
   periodEnd    DateTime?      @db.Date
-  /// No longer used: iPhone/Mac clicks always go to the App Store Connect campaign link (ct = name).
+  /// Own store links. Empty uses the default: Play Store with UTM tags, App Store Connect campaign (ct = name).
+  playStoreUrl String?
   appStoreUrl  String?
   isActive     Boolean        @default(true)
   createdAt    DateTime       @default(now())

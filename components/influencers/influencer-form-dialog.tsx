@@ -38,6 +38,8 @@ export type InfluencerFormValues = {
   referralCode?: string;
   periodStart?: Date | null;
   periodEnd?: Date | null;
+  playStoreUrl?: string | null;
+  appStoreUrl?: string | null;
   link?: { code: string } | null;
 };
 
@@ -138,6 +140,42 @@ export function InfluencerFormDialog({
               </FieldDescription>
               <FieldError errors={err("referralCode")} />
             </Field>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field data-invalid={!!err("playStoreUrl") || undefined}>
+                <FieldLabel htmlFor="playStoreUrl">Android link</FieldLabel>
+                <Input
+                  id="playStoreUrl"
+                  name="playStoreUrl"
+                  type="url"
+                  defaultValue={v("playStoreUrl", influencer?.playStoreUrl)}
+                  placeholder="Default Play Store link"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  aria-invalid={!!err("playStoreUrl")}
+                />
+                <FieldError errors={err("playStoreUrl")} />
+              </Field>
+              <Field data-invalid={!!err("appStoreUrl") || undefined}>
+                <FieldLabel htmlFor="appStoreUrl">iPhone link</FieldLabel>
+                <Input
+                  id="appStoreUrl"
+                  name="appStoreUrl"
+                  type="url"
+                  defaultValue={v("appStoreUrl", influencer?.appStoreUrl)}
+                  placeholder="Default App Store link"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  aria-invalid={!!err("appStoreUrl")}
+                />
+                <FieldError errors={err("appStoreUrl")} />
+              </Field>
+              <FieldDescription className="sm:col-span-2 -mt-2">
+                Optional. Leave empty to use our default store links, tagged with this influencer.
+              </FieldDescription>
+            </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field data-invalid={!!err("periodStart") || undefined}>

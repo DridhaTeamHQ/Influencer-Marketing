@@ -113,6 +113,13 @@ const optionalDay = z.preprocess(
     .nullable(),
 );
 
+/** Own store link, or null to use the default one. */
+const optionalStoreUrl = (store: string) =>
+  z.preprocess(
+    emptyToNull,
+    z.url({ protocol: /^https?$/, error: `Enter the full ${store} link starting with https://` }).max(500).nullable(),
+  );
+
 const influencerSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100),
   handle: z.preprocess(
@@ -132,6 +139,8 @@ const influencerSchema = z.object({
   ),
   periodStart: optionalDay,
   periodEnd: optionalDay,
+  playStoreUrl: optionalStoreUrl("Play Store"),
+  appStoreUrl: optionalStoreUrl("App Store"),
   referralCode: z.preprocess(
     (v) => (typeof v === "string" ? v.trim().toUpperCase() || null : null),
     z
