@@ -42,6 +42,8 @@ model Influencer {
   /// Campaign period agreed with the influencer (inclusive dates).
   periodStart  DateTime?      @db.Date
   periodEnd    DateTime?      @db.Date
+  /// Own App Store link for iPhone/Mac clicks. Empty uses the App Store Connect campaign link (ct = name).
+  appStoreUrl  String?
   isActive     Boolean        @default(true)
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
@@ -188,4 +190,56 @@ model PartnerClick {
   link PartnerLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
 
   @@index([linkId, createdAt])
+}
+
+enum AppStore {
+  GOOGLE_PLAY
+  APP_STORE
+}
+
+/// How a store report splits each day. Totals only ever add up rows of one split.
+enum StoreStatSplit {
+  /// One row per day.
+  TOTAL
+  /// Per traffic source / UTM source / UTM campaign.
+  SOURCE
+  /// Per country.
+  COUNTRY
+}
+
+/// Daily download numbers copied from Play Console and App Store Connect reports.
+model StoreStat {
+  id            String         @id @default(cuid())
+  store         AppStore
+  /// Which report the row came from, e.g. "play_installs", "apple_sales".
+  report        String
+  split         StoreStatSplit
+  date          DateTime       @db.Date
+  /// Traffic source, e.g. "Google Play search" or Apple's "App Store search".
+  channel       String         @default("")
+  utmSource     String         @default("")
+  utmCampaign   String         @default("")
+  country       String         @default("")
+  /// First-time downloads.
+  downloads     Int            @default(0)
+  reinstalls    Int            @default(0)
+  uninstalls    Int            @default(0)
+  /// Play: store listing visitors. Apple: unique devices.
+  uniqueUsers   Int            @default(0)
+  /// Play only: devices with the app installed that day.
+  activeDevices Int?
+
+  @@unique([store, report, split, date, channel, utmSource, utmCampaign, country])
+  @@index([store, report, split, date])
+}
+
+/// When each store report was last copied, so a sync only fetches what changed.
+model StoreSync {
+  /// e.g. "GOOGLE_PLAY:run", "GOOGLE_PLAY:file:stats/...csv", "APP_STORE:sales:2026-10-20".
+  key      String   @id
+  /// The report's version when copied (file update time), if it has one.
+  version  String?
+  /// Last error, shown on the page until a sync succeeds.
+  error    String?
+  syncedAt DateTime @default(now()) @updatedAt
 }

@@ -6,6 +6,8 @@ export const routes = {
   influencers: `${ADMIN_BASE}/influencers`,
   influencer: (id: string) => `${ADMIN_BASE}/influencers/${id}`,
   linkedin: `${ADMIN_BASE}/linkedin`,
+  playStore: `${ADMIN_BASE}/play-store`,
+  appStore: `${ADMIN_BASE}/app-store`,
   login: `${ADMIN_BASE}/login`,
 };
 

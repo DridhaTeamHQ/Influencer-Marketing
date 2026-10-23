@@ -7,9 +7,22 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { LIST_SORTS, listQuery, type ListParams, type ListSort, type ListStatus } from "@/lib/list-params";
+import { PLATFORM_LABELS } from "@/lib/format";
+import {
+  LIST_PLATFORMS,
+  LIST_SORTS,
+  listQuery,
+  type ListParams,
+  type ListPlatform,
+  type ListSort,
+  type ListStatus,
+} from "@/lib/list-params";
 
 const sortItems = Object.entries(LIST_SORTS).map(([value, label]) => ({ value, label }));
+const platformItems = [
+  { value: "all", label: "All platforms" },
+  ...LIST_PLATFORMS.map((p) => ({ value: p, label: PLATFORM_LABELS[p] })),
+];
 
 export function InfluencerToolbar({
   params,
@@ -53,6 +66,23 @@ export function InfluencerToolbar({
           </TabsTrigger>
         </TabsList>
       </Tabs>
+
+      <Select
+        items={platformItems}
+        value={params.platform}
+        onValueChange={(v) => go({ platform: v as ListPlatform })}
+      >
+        <SelectTrigger className="w-full sm:w-40" aria-label="Filter by platform">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {platformItems.map((p) => (
+            <SelectItem key={p.value} value={p.value}>
+              {p.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
       <div className="flex min-w-0 flex-1 gap-2 sm:justify-end">
         <InputGroup className="min-w-0 flex-1 sm:max-w-xs">

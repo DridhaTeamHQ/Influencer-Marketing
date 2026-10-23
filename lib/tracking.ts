@@ -14,19 +14,25 @@ const APP_STORE_PROVIDER_TOKEN = process.env.APP_STORE_PROVIDER_TOKEN ?? "111062
 /**
  * Store links tagged for one influencer:
  * - Play Store: utm_source=instagram & utm_medium=influencer & utm_campaign=bharani
- * - App Store: pt=1110627 & ct=Bharani & mt=8 (App Store Connect campaign, named after the influencer)
+ * - App Store: pt=1110627 & ct=Bharani & mt=8 (App Store Connect campaign, named after the influencer),
+ *   unless the influencer has their own App Store link.
  */
-export function influencerStoreUrls(influencer: { name: string; platform: string }, code: string) {
+export function influencerStoreUrls(
+  influencer: { name: string; platform: string; appStoreUrl?: string | null },
+  code: string,
+) {
   const android = new URL(PLAY_STORE_URL);
   android.searchParams.set("utm_source", influencer.platform.toLowerCase());
   android.searchParams.set("utm_medium", "influencer");
   android.searchParams.set("utm_campaign", code.toLowerCase());
 
+  if (influencer.appStoreUrl) return { android: android.toString(), ios: influencer.appStoreUrl, customIos: true };
+
   // Apple allows campaign names up to 40 characters.
   const campaign = encodeURIComponent(influencer.name.trim().slice(0, 40));
   const ios = `${APP_STORE_CAMPAIGN_URL}?pt=${APP_STORE_PROVIDER_TOKEN}&ct=${campaign}&mt=8`;
 
-  return { android: android.toString(), ios };
+  return { android: android.toString(), ios, customIos: false };
 }
 
 /** iPhone, iPad and Mac visitors go to the App Store; everyone else to the Play Store. */

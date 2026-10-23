@@ -21,6 +21,8 @@ const items = [
   { href: routes.dashboard, label: "Dashboard" },
   { href: routes.influencers, label: "Influencers" },
   { href: routes.linkedin, label: "LinkedIn" },
+  { href: routes.playStore, label: "Play Store" },
+  { href: routes.appStore, label: "App Store" },
 ];
 
 export function SiteNav() {
@@ -59,8 +61,9 @@ function ActiveNavLinks() {
 
 function NavLinks({ pathname }: { pathname: string | null }) {
   return (
-    <NavigationMenu className="sm:ml-4">
-      <NavigationMenuList className="gap-0.5">
+    // On narrow screens the tabs scroll sideways instead of pushing the header off-screen.
+    <NavigationMenu className="min-w-0 overflow-x-auto [scrollbar-width:none] sm:ml-4">
+      <NavigationMenuList className="w-max gap-0.5">
         {items.map((item) => {
           const active =
             pathname !== null && (item.href === routes.dashboard ? pathname === routes.dashboard : pathname.startsWith(item.href));

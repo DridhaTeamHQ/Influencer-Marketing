@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/lib/generated/prisma/client";
-import { PAGE_SIZE, type ListSort, type ListStatus } from "@/lib/list-params";
+import { PAGE_SIZE, type ListPlatform, type ListSort, type ListStatus } from "@/lib/list-params";
 
 export const RANGES = { "7d": 7, "30d": 30, "90d": 90 } as const;
 export type RangeKey = keyof typeof RANGES;
@@ -228,6 +228,7 @@ export async function getInfluencerList(opts: {
   q: string;
   status: ListStatus;
   sort: ListSort;
+  platform: ListPlatform;
   page: number;
 }) {
   const term = opts.q.trim().replace(/^@/, "");
@@ -236,7 +237,8 @@ export async function getInfluencerList(opts: {
   const where = Prisma.sql`WHERE true
     ${term ? Prisma.sql`AND (i.name ILIKE ${like} OR i.handle ILIKE ${like} OR i."referralCode" ILIKE ${like} OR l.code ILIKE ${like})` : Prisma.empty}
     ${opts.status === "active" ? Prisma.sql`AND i."isActive" = true` : Prisma.empty}
-    ${opts.status === "paused" ? Prisma.sql`AND i."isActive" = false` : Prisma.empty}`;
+    ${opts.status === "paused" ? Prisma.sql`AND i."isActive" = false` : Prisma.empty}
+    ${opts.platform !== "all" ? Prisma.sql`AND i.platform::text = ${opts.platform}` : Prisma.empty}`;
 
   const orderBy =
     opts.sort === "name"
