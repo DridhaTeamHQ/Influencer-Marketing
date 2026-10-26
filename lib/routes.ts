@@ -8,6 +8,10 @@ export const routes = {
   linkedin: `${ADMIN_BASE}/linkedin`,
   playStore: `${ADMIN_BASE}/play-store`,
   appStore: `${ADMIN_BASE}/app-store`,
+  social: `${ADMIN_BASE}/social`,
+  instagram: `${ADMIN_BASE}/social/instagram`,
+  facebook: `${ADMIN_BASE}/social/facebook`,
+  youtube: `${ADMIN_BASE}/social/youtube`,
   login: `${ADMIN_BASE}/login`,
 };
 

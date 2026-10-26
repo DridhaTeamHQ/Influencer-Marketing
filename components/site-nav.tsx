@@ -23,6 +23,7 @@ const items = [
   { href: routes.linkedin, label: "LinkedIn" },
   { href: routes.playStore, label: "Play Store" },
   { href: routes.appStore, label: "App Store" },
+  { href: routes.social, label: "Social" },
 ];
 
 export function SiteNav() {

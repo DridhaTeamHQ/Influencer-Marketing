@@ -9,7 +9,7 @@ import { countryName, dbDate, isoDay } from "@/lib/stores/shared";
  * - Google Play: the installs report when Google provides it (downloads, reinstalls, uninstalls,
  *   active devices), otherwise store listing acquisitions; UTM and visitors always come from the
  *   store performance report.
- * - App Store: downloads and re-downloads from Sales reports; deletions, unique devices and
+ * - App Store: downloads and re-downloads from Sales reports (they match App Store Connect); deletions, unique devices and
  *   source/campaign from the Analytics report once Apple produces it.
  */
 
@@ -236,17 +236,13 @@ async function appStoreReport(range: StoreRange): Promise<StoreReport> {
   const analytics: Source = { report: "apple_analytics", split: "SOURCE" };
   const analyticsByCountry: Source = { report: "apple_analytics", split: "COUNTRY" };
 
-  // Days Apple's Analytics report covers use its downloads, re-downloads and deletions, so they
-  // match the Analytics screen in App Store Connect. Other days fall back to Sales reports (counted
-  // per transaction, so a little higher) and have no deletions.
-  const covered = [
-    ...(await prisma.storeStat.groupBy({ by: ["date"], where: where(store, analytics) })).map((r) => isoDay(r.date)),
-  ].sort();
-  const hasAnalytics = covered.length > 0;
-  const coveredSet = new Set(covered);
-  const salesDays: DayFilter = { except: covered };
+  // Downloads and re-downloads always come from Sales reports: they match App Store Connect's
+  // Analytics screen. Apple's Analytics *report* leaves out small counts for privacy (often whole
+  // days), so it only supplies what Sales can't: deletions, unique devices, sources and campaigns.
+  const firstAnalytics = await prisma.storeStat.findFirst({ where: where(store, analytics), orderBy: { date: "asc" } });
+  const hasAnalytics = firstAnalytics !== null;
 
-  const [salesDaily, analyticsDaily, salesPrevDaily, analyticsPrevDaily, sources, campaigns, channels, countries, span] =
+  const [salesDaily, analyticsDaily, salesPrevDaily, analyticsPrevDaily, sources, campaigns, channels, salesCountries, analyticsCountries, span] =
     await Promise.all([
       perDay(store, sales, current),
       perDay(store, analytics, current),
@@ -255,18 +251,16 @@ async function appStoreReport(range: StoreRange): Promise<StoreReport> {
       breakdown(store, analytics, current, "utmSource"),
       breakdown(store, analytics, current, "utmCampaign"),
       breakdown(store, analytics, current, "channel"),
-      breakdown(store, analyticsByCountry, current, "country", (c) => countryName(c) || "Unknown", {
-        source: sales,
-        days: salesDays,
-      }),
+      breakdown(store, sales, current, "country", (c) => countryName(c) || "Unknown"),
+      breakdown(store, analyticsByCountry, current, "country", (c) => countryName(c) || "Unknown"),
       dataSpan(store),
     ]);
 
-  /** One day's numbers: everything from Analytics when it covers the day, otherwise installs from Sales. */
+  /** One day's numbers: installs from Sales, deletions and devices from Analytics. */
   const dayRow = (date: string, salesMap: Map<string, Totals>, analyticsMap: Map<string, Totals>): DayRow => {
-    if (coveredSet.has(date)) return { date, ...(analyticsMap.get(date) ?? zero()) };
     const s = salesMap.get(date) ?? zero();
-    return { date, downloads: s.downloads, reinstalls: s.reinstalls, uninstalls: 0, uniqueUsers: 0 };
+    const a = analyticsMap.get(date) ?? zero();
+    return { date, downloads: s.downloads, reinstalls: s.reinstalls, uninstalls: a.uninstalls, uniqueUsers: a.uniqueUsers };
   };
   const total = (rows: DayRow[]) =>
     rows.reduce((t, r) => {
@@ -279,27 +273,30 @@ async function appStoreReport(range: StoreRange): Promise<StoreReport> {
     dayRow(d, salesPrevDaily, analyticsPrevDaily),
   );
 
+  // Countries: installs from Sales, with Analytics' deletions added per country.
+  const countries = new Map(salesCountries.map((r) => [r.label, { ...r, uninstalls: 0, uniqueUsers: 0 }]));
+  for (const r of analyticsCountries) {
+    const row = countries.get(r.label) ?? { label: r.label, ...zero() };
+    row.uninstalls += r.uninstalls;
+    row.uniqueUsers += r.uniqueUsers;
+    countries.set(r.label, row);
+  }
+
   const notes: string[] = [];
   let active: StoreReport["active"] = null;
   if (hasAnalytics) {
     const allTime = { from: "2000-01-01", to: range.to };
-    const [salesBefore, allAnalytics] = await Promise.all([
-      sum(store, sales, allTime, salesDays),
-      sum(store, analytics, allTime),
-    ]);
-    const installs = salesBefore.downloads + salesBefore.reinstalls + allAnalytics.downloads + allAnalytics.reinstalls;
+    const [allSales, allAnalytics] = await Promise.all([sum(store, sales, allTime), sum(store, analytics, allTime)]);
     active = {
-      value: Math.max(0, installs - allAnalytics.uninstalls),
+      value: Math.max(0, allSales.downloads + allSales.reinstalls - allAnalytics.uninstalls),
       hint: "Estimated: all downloads + re-downloads − deletions Apple has reported",
     };
-    if (range.from < covered[0]!) {
-      notes.push(
-        `Apple’s Analytics report starts ${covered[0]}. From then on, numbers match the Analytics screen in App Store Connect; earlier days come from Sales reports (a little higher, as they count every re-download). Deletions, sources and campaigns start ${covered[0]}.`,
-      );
-    }
+    notes.push(
+      `Downloads and re-downloads come from Sales reports and match App Store Connect. Deletions, sources and campaigns come from Apple’s Analytics report (from ${isoDay(firstAnalytics.date)}), which leaves out small numbers for privacy, so they show less than the real totals.`,
+    );
   } else {
     notes.push(
-      "Apple hasn’t produced its Analytics report yet (it usually takes 1–2 days), so these numbers come from Sales reports (a little higher than the Analytics screen, which counts per device), and deletions, sources and campaigns aren’t available. Everything switches over automatically once Apple’s report arrives.",
+      "Apple hasn’t produced its Analytics report yet (it usually takes 1–2 days), so deletions, sources and campaigns aren’t available. They appear automatically once Apple’s report arrives.",
     );
   }
 
@@ -312,7 +309,11 @@ async function appStoreReport(range: StoreRange): Promise<StoreReport> {
       { key: "utmSource", title: "Source (website / app)", rows: sources },
       { key: "utmCampaign", title: "Campaign", rows: campaigns },
       { key: "channel", title: "Source type", rows: channels },
-      { key: "country", title: "Country", rows: countries },
+      {
+        key: "country",
+        title: "Country",
+        rows: [...countries.values()].sort((a, b) => b.downloads + b.reinstalls - (a.downloads + a.reinstalls) || b.uninstalls - a.uninstalls),
+      },
     ],
     active,
     notes,

@@ -244,3 +244,19 @@ model StoreSync {
   error    String?
   syncedAt DateTime @default(now()) @updatedAt
 }
+
+/// Our own social account signed in through the platform's login (OAuth), e.g. the YouTube channel.
+/// One per platform; the page reads its numbers live from the platform's API.
+model SocialConnection {
+  platform     SocialPlatform @id
+  /// The platform's id for the account, e.g. the YouTube channel id.
+  accountId    String
+  name         String
+  thumbnailUrl String?
+  /// Long-lived refresh token, encrypted with AUTH_SECRET.
+  refreshToken String
+  /// Last error talking to the platform, e.g. access removed. Cleared on the next success.
+  error        String?
+  connectedAt  DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
