@@ -5,6 +5,7 @@ const tabs = [
   { href: routes.instagram, label: "Instagram" },
   { href: routes.facebook, label: "Facebook" },
   { href: routes.youtube, label: "YouTube" },
+  { href: routes.linkedinPage, label: "LinkedIn" },
 ];
 
 export default function SocialLayout({ children }: { children: React.ReactNode }) {

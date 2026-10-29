@@ -1,14 +1,10 @@
-import { ComingSoon } from "@/components/social/coming-soon";
+import { Suspense } from "react";
+import { InstagramDashboard, InstagramDashboardSkeleton } from "@/components/instagram/instagram-dashboard";
 
-export default function InstagramPage() {
+export default function InstagramPage(props: PageProps<"/dridha/social/instagram">) {
   return (
-    <ComingSoon
-      title="Instagram"
-      description="Followers, reach, views and engagement of our Instagram account."
-      needs={[
-        "The Instagram account switched to Business or Creator (free, in the Instagram app).",
-        "A free Meta developer app at developers.facebook.com.",
-      ]}
-    />
+    <Suspense fallback={<InstagramDashboardSkeleton />}>
+      <InstagramDashboard searchParams={props.searchParams} />
+    </Suspense>
   );
 }

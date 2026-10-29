@@ -4,8 +4,19 @@ import { ButtonGroup } from "@/components/ui/button-group";
 import { Input } from "@/components/ui/input";
 import { STORE_RANGES, type StoreRange, type StoreRangeKey } from "@/lib/stores/range";
 
-/** Quick ranges (week, month, 3 and 6 months) plus a custom from–to, all as links / a GET form. */
-export function StoreRangeFilter({ range, basePath }: { range: StoreRange; basePath: string }) {
+/**
+ * Quick ranges (week, month, 3 and 6 months) plus a custom from–to, all as links / a GET form.
+ * `params` (e.g. the store filter) are kept when the dates change.
+ */
+export function StoreRangeFilter({
+  range,
+  basePath,
+  params = {},
+}: {
+  range: StoreRange;
+  basePath: string;
+  params?: Record<string, string>;
+}) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <ButtonGroup aria-label="Date range">
@@ -15,7 +26,7 @@ export function StoreRangeFilter({ range, basePath }: { range: StoreRange; baseP
             size="sm"
             variant={key === range.key ? "secondary" : "outline"}
             nativeButton={false}
-            render={<Link href={`${basePath}?range=${key}`} scroll={false} />}
+            render={<Link href={`${basePath}?${new URLSearchParams({ ...params, range: key })}`} scroll={false} />}
             aria-current={key === range.key ? "page" : undefined}
           >
             {STORE_RANGES[key].label}
@@ -23,6 +34,9 @@ export function StoreRangeFilter({ range, basePath }: { range: StoreRange; baseP
         ))}
       </ButtonGroup>
       <form action={basePath} className="flex flex-wrap items-center gap-1.5">
+        {Object.entries(params).map(([name, value]) => (
+          <input key={name} type="hidden" name={name} value={value} />
+        ))}
         <Input
           type="date"
           name="from"

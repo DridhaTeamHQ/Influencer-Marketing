@@ -260,3 +260,12 @@ model SocialConnection {
   connectedAt  DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 }
+
+/// Total referral code usage (all codes, all time) as of one day, from an uploaded referral-codes CSV.
+/// Only the total is kept, not the file.
+model ReferralDownload {
+  date      DateTime @id @db.Date
+  count     Int
+  note      String?
+  updatedAt DateTime @updatedAt
+}

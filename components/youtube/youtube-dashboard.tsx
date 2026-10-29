@@ -117,9 +117,10 @@ export async function YoutubeDashboard({
         title={
           <span className="flex items-center gap-3">
             {channel.thumbnailUrl && (
-              // YouTube's own thumbnail host; not worth routing through next/image.
+              // YouTube's own thumbnail host; not worth routing through next/image. yt3.ggpht.com
+              // refuses some requests that carry a Referer, so send none.
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={channel.thumbnailUrl} alt="" className="size-9 rounded-full" />
+              <img src={channel.thumbnailUrl} alt="" referrerPolicy="no-referrer" className="size-9 rounded-full" />
             )}
             {channel.title}
           </span>
@@ -317,7 +318,12 @@ function VideoCell({ video }: { video: Video }) {
     >
       {video.thumbnailUrl && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={video.thumbnailUrl} alt="" className="aspect-video w-20 shrink-0 rounded-md object-cover" />
+        <img
+          src={video.thumbnailUrl}
+          alt=""
+          referrerPolicy="no-referrer"
+          className="aspect-video w-20 shrink-0 rounded-md object-cover"
+        />
       )}
       <span className="line-clamp-2 max-w-80 text-sm whitespace-normal" title={video.title}>
         {video.title}

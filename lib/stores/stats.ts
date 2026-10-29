@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { AppStore, StoreStatSplit } from "@/lib/generated/prisma/enums";
 import { rangeDays, type StoreRange } from "@/lib/stores/range";
-import { countryName, dbDate, isoDay } from "@/lib/stores/shared";
+import { APPLE_MANUAL_REPORT, countryName, daysAgo, dbDate, isoDay } from "@/lib/stores/shared";
 
 /**
  * Store page numbers, read from the StoreStat table the syncs fill. Each store's reports cover
@@ -9,17 +9,41 @@ import { countryName, dbDate, isoDay } from "@/lib/stores/shared";
  * - Google Play: the installs report when Google provides it (downloads, reinstalls, uninstalls,
  *   active devices), otherwise store listing acquisitions; UTM and visitors always come from the
  *   store performance report.
- * - App Store: downloads and re-downloads from Sales reports (they match App Store Connect); deletions, unique devices and
+ * - App Store: downloads and re-downloads from Sales reports (they match Sales and Trends); deletions, unique devices and
  *   source/campaign from the Analytics report once Apple produces it.
  */
 
 /** Uninstalls imported from a Play Console "Users lost" CSV, used until Google's installs report exists. */
 export const PLAY_IMPORT_REPORT = "play_import_users_lost";
 
-type Metric = "downloads" | "reinstalls" | "uninstalls" | "uniqueUsers";
+export type Metric = "downloads" | "reinstalls" | "uninstalls" | "uniqueUsers";
 export type Totals = Record<Metric, number>;
 export type DayRow = Totals & { date: string };
 export type BreakdownRow = Totals & { label: string };
+
+/** Installs split by country, source, …; `metrics` lists what its report covers (default: installs and removals). */
+export type Breakdown = {
+  key: string;
+  title: string;
+  rows: BreakdownRow[];
+  metrics?: Metric[];
+  /** Overrides the "Downloads" column name, e.g. when the report counts store listing acquisitions. */
+  downloadsLabel?: string;
+  note?: string;
+};
+
+export const BREAKDOWN_METRICS: Metric[] = ["downloads", "reinstalls", "uninstalls"];
+
+/** Same names for untagged installs in both stores, so the Overall view adds them up. */
+const noSource = (v: string) => v || "No source tag";
+const noCampaign = (v: string) => v || "No campaign";
+
+/** Play's store listing report: acquisitions and visitors by source, without reinstalls or uninstalls. */
+const PLAY_LISTING = {
+  metrics: ["downloads", "uniqueUsers"],
+  downloadsLabel: "Acquisitions",
+  note: "From Google’s store listing report: installs that came through the store listing, and listing visitors. Google doesn’t split reinstalls or uninstalls by source, so the totals differ a little from the cards above.",
+} satisfies Partial<Breakdown>;
 
 const METRICS: Metric[] = ["downloads", "reinstalls", "uninstalls", "uniqueUsers"];
 const zero = (): Totals => ({ downloads: 0, reinstalls: 0, uninstalls: 0, uniqueUsers: 0 });
@@ -96,13 +120,20 @@ function pick(a: Totals, b: Totals, fromB: Metric[]): Totals {
   return out;
 }
 
+/**
+ * How a number compares with the store's own console: "exact" matches it, "partial" is the store's
+ * number with some of it left out (privacy, late days), "estimate" is worked out here.
+ */
+export type Accuracy = "exact" | "partial" | "estimate";
+
 export type StoreReport = {
   daily: DayRow[];
   totals: Totals;
   prev: Totals;
   /** Which numbers this store can show yet. */
   has: Record<Metric, boolean> & { utm: boolean };
-  breakdowns: { key: string; title: string; rows: BreakdownRow[] }[];
+  accuracy: Record<Metric | "active", Accuracy>;
+  breakdowns: Breakdown[];
   active: { value: number; hint: string } | null;
   notes: string[];
   /** First and last day with any data, to explain empty ranges. */
@@ -162,14 +193,15 @@ async function googlePlayReport(range: StoreRange): Promise<StoreReport> {
       sum(store, main, previous),
       sum(store, listing, previous),
       sum(store, imported, previous),
-      breakdown(store, listing, current, "utmSource"),
-      breakdown(store, listing, current, "utmCampaign"),
+      breakdown(store, listing, current, "utmSource", noSource),
+      breakdown(store, listing, current, "utmCampaign", noCampaign),
       breakdown(store, listing, current, "channel"),
       breakdown(store, hasInstalls ? { report: "play_installs", split: "COUNTRY" } : { report: "play_store_listing", split: "COUNTRY" }, current, "country", (c) => countryName(c) || "Unknown"),
       dataSpan(store),
     ]);
 
   let active: StoreReport["active"] = null;
+  let activeAccuracy: Accuracy = "estimate";
   const notes: string[] = [];
   if (hasInstalls) {
     const latest = await prisma.storeStat.findFirst({
@@ -178,6 +210,7 @@ async function googlePlayReport(range: StoreRange): Promise<StoreReport> {
     });
     if (latest?.activeDevices != null) {
       active = { value: latest.activeDevices, hint: `Devices with the app on ${isoDay(latest.date)} (Google Play)` };
+      activeAccuracy = "exact";
     } else {
       const all = await sum(store, installs, { from: "2000-01-01", to: range.to });
       active = {
@@ -216,11 +249,19 @@ async function googlePlayReport(range: StoreRange): Promise<StoreReport> {
     totals: pick(pick(pick(zero(), mainNow, fromMain), listingNow, ["uniqueUsers"]), importNow, importMetrics),
     prev: pick(pick(pick(zero(), mainPrev, fromMain), listingPrev, ["uniqueUsers"]), importPrev, importMetrics),
     has: { downloads: true, reinstalls: hasInstalls, uninstalls: hasInstalls || useImport, uniqueUsers: true, utm: true },
+    // Install reports and the imported Play Console CSV are Google's own numbers; listing acquisitions aren't installs.
+    accuracy: {
+      downloads: hasInstalls ? "exact" : "estimate",
+      reinstalls: "exact",
+      uninstalls: "exact",
+      uniqueUsers: "exact",
+      active: activeAccuracy,
+    },
     breakdowns: [
-      { key: "utmSource", title: "UTM source", rows: sources },
-      { key: "utmCampaign", title: "UTM campaign", rows: campaigns },
-      { key: "channel", title: "Traffic source", rows: channels },
-      { key: "country", title: "Country", rows: countries },
+      { key: "utmSource", title: "UTM source", rows: sources, ...PLAY_LISTING },
+      { key: "utmCampaign", title: "UTM campaign", rows: campaigns, ...PLAY_LISTING },
+      { key: "channel", title: "Traffic source", rows: channels, ...PLAY_LISTING },
+      { key: "country", title: "Country", rows: countries, ...(!hasInstalls && PLAY_LISTING) },
     ],
     active,
     notes,
@@ -237,30 +278,53 @@ async function appStoreReport(range: StoreRange): Promise<StoreReport> {
   const analyticsByCountry: Source = { report: "apple_analytics", split: "COUNTRY" };
 
   // Downloads and re-downloads always come from Sales reports: they match App Store Connect's
-  // Analytics screen. Apple's Analytics *report* leaves out small counts for privacy (often whole
+  // Sales and Trends (its Analytics overview classifies a few downloads differently). Apple's Analytics *report* leaves out small counts for privacy (often whole
   // days), so it only supplies what Sales can't: deletions, unique devices, sources and campaigns.
-  const firstAnalytics = await prisma.storeStat.findFirst({ where: where(store, analytics), orderBy: { date: "asc" } });
+  const [firstAnalytics, lastAnalytics] = await Promise.all([
+    prisma.storeStat.findFirst({ where: where(store, analytics), orderBy: { date: "asc" } }),
+    prisma.storeStat.findFirst({ where: where(store, analytics), orderBy: { date: "desc" } }),
+  ]);
   const hasAnalytics = firstAnalytics !== null;
+  // Deletions typed in for days Apple hasn't reported only count after its last reported day, so its
+  // own numbers take over as soon as they arrive.
+  const appleUntil = lastAnalytics ? isoDay(lastAnalytics.date) : "";
+  const manual: Source = { report: APPLE_MANUAL_REPORT, split: "TOTAL" };
 
-  const [salesDaily, analyticsDaily, salesPrevDaily, analyticsPrevDaily, sources, campaigns, channels, salesCountries, analyticsCountries, span] =
+  const [
+    salesDaily,
+    analyticsDaily,
+    manualDaily,
+    salesPrevDaily,
+    analyticsPrevDaily,
+    manualPrevDaily,
+    sources,
+    campaigns,
+    channels,
+    salesCountries,
+    analyticsCountries,
+    span,
+  ] =
     await Promise.all([
       perDay(store, sales, current),
       perDay(store, analytics, current),
+      perDay(store, manual, current),
       perDay(store, sales, previous),
       perDay(store, analytics, previous),
-      breakdown(store, analytics, current, "utmSource"),
-      breakdown(store, analytics, current, "utmCampaign"),
+      perDay(store, manual, previous),
+      breakdown(store, analytics, current, "utmSource", noSource),
+      breakdown(store, analytics, current, "utmCampaign", noCampaign),
       breakdown(store, analytics, current, "channel"),
       breakdown(store, sales, current, "country", (c) => countryName(c) || "Unknown"),
       breakdown(store, analyticsByCountry, current, "country", (c) => countryName(c) || "Unknown"),
       dataSpan(store),
     ]);
 
-  /** One day's numbers: installs from Sales, deletions and devices from Analytics. */
-  const dayRow = (date: string, salesMap: Map<string, Totals>, analyticsMap: Map<string, Totals>): DayRow => {
+  /** One day's numbers: installs from Sales, deletions and devices from Analytics (or typed in, past Apple's last day). */
+  const dayRow = (date: string, salesMap: Map<string, Totals>, analyticsMap: Map<string, Totals>, manualMap: Map<string, Totals>): DayRow => {
     const s = salesMap.get(date) ?? zero();
     const a = analyticsMap.get(date) ?? zero();
-    return { date, downloads: s.downloads, reinstalls: s.reinstalls, uninstalls: a.uninstalls, uniqueUsers: a.uniqueUsers };
+    const typed = date > appleUntil ? (manualMap.get(date)?.uninstalls ?? 0) : 0;
+    return { date, downloads: s.downloads, reinstalls: s.reinstalls, uninstalls: a.uninstalls + typed, uniqueUsers: a.uniqueUsers };
   };
   const total = (rows: DayRow[]) =>
     rows.reduce((t, r) => {
@@ -268,10 +332,18 @@ async function appStoreReport(range: StoreRange): Promise<StoreReport> {
       return t;
     }, zero());
 
-  const daily = rangeDays(range).map((d) => dayRow(d, salesDaily, analyticsDaily));
+  const daily = rangeDays(range).map((d) => dayRow(d, salesDaily, analyticsDaily, manualDaily));
   const prevDaily = rangeDays({ from: range.prevFrom, days: range.days }).map((d) =>
-    dayRow(d, salesPrevDaily, analyticsPrevDaily),
+    dayRow(d, salesPrevDaily, analyticsPrevDaily, manualPrevDaily),
   );
+  // Typed-in deletions up to the end of the range, for the notes and active installs.
+  const typedDays = await prisma.storeStat.findMany({
+    where: { ...where(store, manual), date: { gt: appleUntil ? dbDate(appleUntil) : undefined, lte: dbDate(range.to) } },
+    select: { date: true, uninstalls: true },
+    orderBy: { date: "asc" },
+  });
+  const typedTotal = typedDays.reduce((s, d) => s + d.uninstalls, 0);
+  const hasTyped = typedDays.length > 0;
 
   // Countries: installs from Sales, with Analytics' deletions added per country.
   const countries = new Map(salesCountries.map((r) => [r.label, { ...r, uninstalls: 0, uniqueUsers: 0 }]));
@@ -284,16 +356,32 @@ async function appStoreReport(range: StoreRange): Promise<StoreReport> {
 
   const notes: string[] = [];
   let active: StoreReport["active"] = null;
-  if (hasAnalytics) {
+  if (hasAnalytics || hasTyped) {
     const allTime = { from: "2000-01-01", to: range.to };
     const [allSales, allAnalytics] = await Promise.all([sum(store, sales, allTime), sum(store, analytics, allTime)]);
     active = {
-      value: Math.max(0, allSales.downloads + allSales.reinstalls - allAnalytics.uninstalls),
-      hint: "Estimated: all downloads + re-downloads − deletions Apple has reported",
+      value: Math.max(0, allSales.downloads + allSales.reinstalls - allAnalytics.uninstalls - typedTotal),
+      hint: hasTyped
+        ? "Estimated: all downloads + re-downloads − deletions (Apple’s report plus the ones you entered)"
+        : "Estimated: all downloads + re-downloads − deletions Apple has reported",
     };
+  }
+  if (hasTyped) {
     notes.push(
-      `Downloads and re-downloads come from Sales reports and match App Store Connect. Deletions, sources and campaigns come from Apple’s Analytics report (from ${isoDay(firstAnalytics.date)}), which leaves out small numbers for privacy, so they show less than the real totals.`,
+      `Deletions for ${isoDay(typedDays[0]!.date)} to ${isoDay(typedDays.at(-1)!.date)} (${typedTotal.toLocaleString("en")}) are numbers you entered. When Apple’s report for those days arrives, its numbers replace them automatically.`,
     );
+  }
+  if (hasAnalytics) {
+    const lastDay = isoDay(lastAnalytics!.date);
+    notes.push(
+      `Downloads and re-downloads come from Sales reports and match App Store Connect’s Sales and Trends. Its Analytics overview shows slightly different numbers: it leaves out restores from a backup and automatic downloads on other devices (so fewer redownloads), and Apple processes it on a different schedule, so some downloads land on a different day. Deletions, sources and campaigns come from Apple’s Analytics report, which has data from ${isoDay(firstAnalytics.date)} to ${lastDay}. It leaves out small numbers for privacy, so they show less than the real totals.`,
+    );
+    // Apple's daily Analytics files usually lag a day or two; flag it when they're further behind.
+    if (lastDay < daysAgo(3)) {
+      notes.push(
+        `Apple hasn’t published its Analytics report for days after ${lastDay} yet. Apple decides when (it can take several days and doesn’t give a date). Until then you can enter deletions from App Store Connect with the pencil on the Deletions card; Apple’s numbers replace them on the next sync after they arrive.`,
+      );
+    }
   } else {
     notes.push(
       "Apple hasn’t produced its Analytics report yet (it usually takes 1–2 days), so deletions, sources and campaigns aren’t available. They appear automatically once Apple’s report arrives.",
@@ -304,7 +392,9 @@ async function appStoreReport(range: StoreRange): Promise<StoreReport> {
     daily,
     totals: total(daily),
     prev: total(prevDaily),
-    has: { downloads: true, reinstalls: true, uninstalls: hasAnalytics, uniqueUsers: hasAnalytics, utm: hasAnalytics },
+    has: { downloads: true, reinstalls: true, uninstalls: hasAnalytics || hasTyped, uniqueUsers: hasAnalytics, utm: hasAnalytics },
+    // Sales reports match App Store Connect; the Analytics report drops small numbers and lags.
+    accuracy: { downloads: "exact", reinstalls: "exact", uninstalls: "partial", uniqueUsers: "partial", active: "estimate" },
     breakdowns: [
       { key: "utmSource", title: "Source (website / app)", rows: sources },
       { key: "utmCampaign", title: "Campaign", rows: campaigns },
@@ -323,3 +413,182 @@ async function appStoreReport(range: StoreRange): Promise<StoreReport> {
 
 export const getStoreReport = (store: AppStore, range: StoreRange) =>
   store === "GOOGLE_PLAY" ? googlePlayReport(range) : appStoreReport(range);
+
+/** A day in the "Overall" view, with each store's downloads + reinstalls for the chart. */
+export type OverallDayRow = DayRow & Partial<Record<"play" | "apple", number>>;
+
+const addTotals = (a: Totals, b: Totals): Totals => ({
+  downloads: a.downloads + b.downloads,
+  reinstalls: a.reinstalls + b.reinstalls,
+  uninstalls: a.uninstalls + b.uninstalls,
+  uniqueUsers: a.uniqueUsers + b.uniqueUsers,
+});
+
+/** Rows with the same label (country, source, …) added together, biggest first. */
+function mergeRows(...lists: BreakdownRow[][]): BreakdownRow[] {
+  const merged = new Map<string, BreakdownRow>();
+  for (const r of lists.flat()) merged.set(r.label, { label: r.label, ...addTotals(merged.get(r.label) ?? zero(), r) });
+  return [...merged.values()].sort((a, b) => b.downloads + b.reinstalls - (a.downloads + a.reinstalls) || b.uninstalls - a.uninstalls);
+}
+
+const ACCURACY_ORDER: Accuracy[] = ["exact", "partial", "estimate"];
+
+/** A sum is only as exact as its least exact part. */
+export const worst = (list: Accuracy[]): Accuracy =>
+  list.reduce((a, b) => (ACCURACY_ORDER.indexOf(b) > ACCURACY_ORDER.indexOf(a) ? b : a), "exact");
+
+const BREAKDOWN_TITLES: Record<string, string> = {
+  utmSource: "Source",
+  utmCampaign: "Campaign",
+  channel: "Traffic source",
+  country: "Country",
+};
+
+/**
+ * Both stores added together for the "Overall" view. A number one store can't report yet counts
+ * as 0 for it. Store visitors (Play) and unique devices (Apple) count different things, so they're left out.
+ */
+export function combineStoreReports(parts: { key: "play" | "apple"; name: string; report: StoreReport }[]): StoreReport {
+  const reports = parts.map((p) => p.report);
+  const sumOf = (get: (r: StoreReport) => Totals) => {
+    const t = reports.map(get).reduce(addTotals, zero());
+    return { ...t, uniqueUsers: 0 };
+  };
+  const either = (get: (r: StoreReport) => boolean) => reports.some(get);
+  const actives = parts.filter((p) => p.report.active);
+  const spans = (get: (r: StoreReport) => string | null) => reports.map(get).filter((d): d is string => d !== null).sort();
+
+  return {
+    daily: reports[0]!.daily.map((day, i) => {
+      const row: OverallDayRow = { date: day.date, ...zero() };
+      for (const p of parts) {
+        const d = p.report.daily[i]!;
+        Object.assign(row, addTotals(row, d));
+        row[p.key] = d.downloads + d.reinstalls;
+      }
+      return { ...row, uniqueUsers: 0 };
+    }),
+    totals: sumOf((r) => r.totals),
+    prev: sumOf((r) => r.prev),
+    has: {
+      downloads: true,
+      reinstalls: either((r) => r.has.reinstalls),
+      uninstalls: either((r) => r.has.uninstalls),
+      uniqueUsers: false,
+      utm: either((r) => r.has.utm),
+    },
+    accuracy: {
+      downloads: worst(reports.map((r) => r.accuracy.downloads)),
+      reinstalls: worst(reports.map((r) => r.accuracy.reinstalls)),
+      uninstalls: worst(reports.map((r) => r.accuracy.uninstalls)),
+      uniqueUsers: "estimate",
+      active: worst(reports.map((r) => (r.active ? r.accuracy.active : "estimate"))),
+    },
+    breakdowns: [
+      { key: "store", title: "Store", rows: parts.map((p) => ({ label: p.name, ...p.report.totals, uniqueUsers: 0 })) },
+      ...Object.entries(BREAKDOWN_TITLES).map(([key, title]): Breakdown => {
+        const found = parts.map((p) => ({ name: p.name, b: p.report.breakdowns.find((b) => b.key === key) }));
+        return {
+          key,
+          title,
+          rows: mergeRows(...found.map((f) => f.b?.rows ?? [])),
+          // Only columns every store reports; visitors (Play) and devices (Apple) count different things.
+          metrics: BREAKDOWN_METRICS.filter((m) => found.every((f) => (f.b?.metrics ?? BREAKDOWN_METRICS).includes(m))),
+          note: found
+            .filter((f) => f.b?.note)
+            .map((f) => `${f.name}: ${f.b!.note}`)
+            .join(" "),
+        };
+      }),
+    ],
+    active: actives.length
+      ? {
+          value: actives.reduce((s, p) => s + p.report.active!.value, 0),
+          hint:
+            actives.length === parts.length
+              ? `${parts.map((p) => p.name).join(" + ")} active installs`
+              : `${actives[0]!.name} only: ${actives[0]!.report.active!.hint}`,
+        }
+      : null,
+    notes: parts.flatMap((p) => p.report.notes.map((n) => `${p.name}: ${n}`)),
+    dataFrom: spans((r) => r.dataFrom)[0] ?? null,
+    dataTo: spans((r) => r.dataTo).at(-1) ?? null,
+  };
+}
+
+/** Code uses that aren't counted as referral downloads; taken off the total usage. */
+export const REFERRAL_USAGE_OFFSET = 108;
+
+/** One referral-codes CSV upload, compared with first-time downloads up to its date. */
+export type ReferralPoint = {
+  date: string;
+  note: string | null;
+  /** Referral downloads: total usage of all referral codes − REFERRAL_USAGE_OFFSET. */
+  referral: number;
+  /** First-time downloads, both stores, up to and including this date. */
+  downloads: number;
+  /** Exact once Google publishes install reports; before that Play's part is listing acquisitions. */
+  downloadsAccuracy: Accuracy;
+  withoutReferral: number;
+};
+
+/** First-time downloads per day for both stores, from the same reports as the Downloads card. */
+async function firstTimeDownloads(to: string) {
+  const allTime = { from: "2000-01-01", to };
+  const installs: Source = { report: "play_installs", split: "TOTAL" };
+  const hasInstalls = await hasRows("GOOGLE_PLAY", installs);
+  const play = hasInstalls ? installs : ({ report: "play_store_listing", split: "SOURCE" } as const);
+  const [playDays, appleDays] = await Promise.all([
+    perDay("GOOGLE_PLAY", play, allTime),
+    perDay("APP_STORE", { report: "apple_sales", split: "COUNTRY" }, allTime),
+  ]);
+  const days = new Map<string, number>();
+  for (const map of [playDays, appleDays]) for (const [day, t] of map) days.set(day, (days.get(day) ?? 0) + t.downloads);
+  return { days, accuracy: (hasInstalls ? "exact" : "estimate") as Accuracy };
+}
+
+/** Every upload (oldest first) with referral vs without-referral downloads as of its date. */
+export async function getReferralReport() {
+  const uploads = await prisma.referralDownload.findMany({ orderBy: { date: "asc" } });
+  if (!uploads.length) return { points: [] as ReferralPoint[], latest: null };
+
+  const { days, accuracy } = await firstTimeDownloads(isoDay(uploads.at(-1)!.date));
+  const points: ReferralPoint[] = [];
+  for (const u of uploads) {
+    const date = isoDay(u.date);
+    let downloads = 0;
+    for (const [day, n] of days) if (day <= date) downloads += n;
+    const referral = Math.max(0, u.count - REFERRAL_USAGE_OFFSET);
+    points.push({
+      date,
+      note: u.note,
+      referral,
+      downloads,
+      downloadsAccuracy: accuracy,
+      withoutReferral: Math.max(0, downloads - referral),
+    });
+  }
+  return { points, latest: points.at(-1)! };
+}
+
+export type DeletionGap = { from: string; to: string; days: { date: string; value: number | null }[]; appleUntil: string | null };
+
+/**
+ * Days Apple's Analytics report doesn't cover yet (after its last day, up to yesterday, at most 30),
+ * with the deletions typed in for them so far. Null when Apple's report is up to date.
+ */
+export async function getAppleDeletionGap(): Promise<DeletionGap | null> {
+  const store = "APP_STORE" as const;
+  const last = await prisma.storeStat.findFirst({ where: where(store, { report: "apple_analytics", split: "SOURCE" }), orderBy: { date: "desc" } });
+  const appleUntil = last ? isoDay(last.date) : null;
+  const to = daysAgo(1);
+  const after = appleUntil ? isoDay(new Date(Date.parse(`${appleUntil}T00:00:00Z`) + 86_400_000)) : daysAgo(30);
+  const from = after < daysAgo(30) ? daysAgo(30) : after;
+  if (from > to) return null;
+
+  const typed = await perDay(store, { report: APPLE_MANUAL_REPORT, split: "TOTAL" }, { from, to });
+  const days = rangeDays({ from, days: Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1 })
+    .reverse()
+    .map((date) => ({ date, value: typed.has(date) ? typed.get(date)!.uninstalls : null }));
+  return { from, to, days, appleUntil };
+}

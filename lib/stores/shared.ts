@@ -54,6 +54,12 @@ export function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+/**
+ * App Store deletions typed in on the stores page for days Apple's Analytics report doesn't cover
+ * yet. They only count after Apple's last reported day, and the sync removes them once it does.
+ */
+export const APPLE_MANUAL_REPORT = "apple_manual_deletions";
+
 /** One row headed for the StoreStat table. */
 export type StatRow = {
   split: StoreStatSplit;

@@ -9,29 +9,36 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import type { DayRow } from "@/lib/stores/stats";
+import type { OverallDayRow } from "@/lib/stores/stats";
 
 const shortDate = (value: string) =>
   new Date(`${value}T00:00:00Z`).toLocaleDateString("en", { month: "short", day: "numeric", timeZone: "UTC" });
 
-/** Downloads and reinstalls stacked, with uninstalls beside them. Series the store can't report yet are left out. */
+export type ChartStore = { key: "play" | "apple"; name: string; color: string };
+
+/**
+ * Downloads with uninstalls beside them; uninstalls are left out until the store reports them.
+ * With `stores` (the Overall view), the bars are each store's downloads + reinstalls instead.
+ */
 export function StoreChart({
   data,
   color,
-  showReinstalls,
   showUninstalls,
   uninstallLabel,
+  stores,
 }: {
-  data: DayRow[];
+  data: OverallDayRow[];
   color: string;
-  showReinstalls: boolean;
   showUninstalls: boolean;
   /** "Uninstalls" (Play) or "Deletions" (Apple). */
   uninstallLabel: string;
+  stores?: ChartStore[];
 }) {
+  const stack = stores
+    ? stores.map((s) => ({ key: s.key, label: s.name, color: s.color }))
+    : [{ key: "downloads", label: "Downloads", color }];
   const config = {
-    downloads: { label: "Downloads", color },
-    reinstalls: { label: "Reinstalls", color: "var(--chart-4)" },
+    ...Object.fromEntries(stack.map((s) => [s.key, { label: s.label, color: s.color }])),
     uninstalls: { label: uninstallLabel, color: "var(--destructive)" },
   } satisfies ChartConfig;
 
@@ -45,16 +52,16 @@ export function StoreChart({
           cursor={{ fill: "var(--muted)" }}
           content={<ChartTooltipContent labelFormatter={(v) => shortDate(String(v))} />}
         />
-        <Bar
-          dataKey="downloads"
-          stackId="installs"
-          fill="var(--color-downloads)"
-          radius={showReinstalls ? undefined : [4, 4, 0, 0]}
-          maxBarSize={24}
-        />
-        {showReinstalls && (
-          <Bar dataKey="reinstalls" stackId="installs" fill="var(--color-reinstalls)" radius={[4, 4, 0, 0]} maxBarSize={24} />
-        )}
+        {stack.map((s, i) => (
+          <Bar
+            key={s.key}
+            dataKey={s.key}
+            stackId="installs"
+            fill={`var(--color-${s.key})`}
+            radius={i === stack.length - 1 ? [4, 4, 0, 0] : undefined}
+            maxBarSize={24}
+          />
+        ))}
         {showUninstalls && (
           <Bar dataKey="uninstalls" fill="var(--color-uninstalls)" radius={[4, 4, 0, 0]} maxBarSize={24} />
         )}

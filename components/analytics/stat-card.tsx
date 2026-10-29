@@ -19,6 +19,7 @@ export function StatCard({
   hint,
   icon,
   accent = "primary",
+  tag,
 }: {
   label: string;
   value: string;
@@ -27,11 +28,16 @@ export function StatCard({
   hint?: string;
   icon?: React.ReactNode;
   accent?: keyof typeof ACCENTS;
+  /** Shown next to the label, e.g. how exact the number is. */
+  tag?: React.ReactNode;
 }) {
   return (
     <Card>
       <CardHeader>
-        <CardDescription>{label}</CardDescription>
+        <CardDescription className="flex flex-wrap items-center gap-1.5">
+          {label}
+          {tag}
+        </CardDescription>
         <CardTitle className="text-2xl font-semibold tabular-nums">{value}</CardTitle>
         {icon && (
           <CardAction>

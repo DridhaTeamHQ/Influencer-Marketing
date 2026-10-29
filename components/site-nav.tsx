@@ -21,8 +21,7 @@ const items = [
   { href: routes.dashboard, label: "Dashboard" },
   { href: routes.influencers, label: "Influencers" },
   { href: routes.linkedin, label: "LinkedIn" },
-  { href: routes.playStore, label: "Play Store" },
-  { href: routes.appStore, label: "App Store" },
+  { href: routes.stores, label: "App Stores" },
   { href: routes.social, label: "Social" },
 ];
 

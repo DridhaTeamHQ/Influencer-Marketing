@@ -16,7 +16,7 @@ export function decodeCsv(bytes: Uint8Array) {
   return new TextDecoder("utf-8").decode(bytes);
 }
 
-function splitRow(line: string, delimiter: string) {
+export function splitRow(line: string, delimiter: string) {
   const cells: string[] = [];
   let cell = "";
   let quoted = false;
@@ -95,4 +95,28 @@ export function parseDailyCountCsv(text: string): ParsedImport {
     days: [...byDay].map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date)),
     columns: used.map(({ name }) => name || "(unnamed)"),
   };
+}
+
+export type ParsedReferralCodes = { total: number; codes: number; used: number };
+
+/** Adds up the "Usage Count" column of the referral portal's referral-codes export. */
+export function parseReferralCodesCsv(text: string): ParsedReferralCodes {
+  const lines = text.replace(/^﻿/, "").split(/\r?\n/).filter((l) => l.trim());
+  const rows = lines.map((l) => splitRow(l, ","));
+  const headerIndex = rows.findIndex((r) => r.some((c) => /^usage ?count$/i.test(c)));
+  if (headerIndex < 0) throw new Error("Couldn’t find a “Usage Count” column. Upload the referral codes CSV from the referral portal.");
+  const usageColumn = rows[headerIndex]!.findIndex((c) => /^usage ?count$/i.test(c));
+
+  let total = 0;
+  let codes = 0;
+  let used = 0;
+  for (const row of rows.slice(headerIndex + 1)) {
+    const count = toNumber(row[usageColumn] ?? "");
+    if (count === null || count < 0) throw new Error(`“${row[usageColumn]}” in the Usage Count column isn’t a number.`);
+    codes++;
+    total += count;
+    if (count > 0) used++;
+  }
+  if (codes === 0) throw new Error("The file has no referral codes.");
+  return { total, codes, used };
 }

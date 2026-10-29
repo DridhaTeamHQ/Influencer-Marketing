@@ -6,12 +6,14 @@ export const routes = {
   influencers: `${ADMIN_BASE}/influencers`,
   influencer: (id: string) => `${ADMIN_BASE}/influencers/${id}`,
   linkedin: `${ADMIN_BASE}/linkedin`,
-  playStore: `${ADMIN_BASE}/play-store`,
-  appStore: `${ADMIN_BASE}/app-store`,
+  /** Overall, `?store=play` or `?store=apple`. */
+  stores: `${ADMIN_BASE}/stores`,
   social: `${ADMIN_BASE}/social`,
   instagram: `${ADMIN_BASE}/social/instagram`,
   facebook: `${ADMIN_BASE}/social/facebook`,
   youtube: `${ADMIN_BASE}/social/youtube`,
+  /** Our LinkedIn company page (the partner-link clicks are at `linkedin`). */
+  linkedinPage: `${ADMIN_BASE}/social/linkedin`,
   login: `${ADMIN_BASE}/login`,
 };
 

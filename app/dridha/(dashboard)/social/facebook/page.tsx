@@ -1,14 +1,10 @@
-import { ComingSoon } from "@/components/social/coming-soon";
+import { Suspense } from "react";
+import { FacebookDashboard, FacebookDashboardSkeleton } from "@/components/facebook/facebook-dashboard";
 
-export default function FacebookPage() {
+export default function FacebookPage(props: PageProps<"/dridha/social/facebook">) {
   return (
-    <ComingSoon
-      title="Facebook"
-      description="Followers, reach and engagement of our Facebook Page."
-      needs={[
-        "A Facebook Page (personal profiles share almost no data).",
-        "The same free Meta developer app as Instagram.",
-      ]}
-    />
+    <Suspense fallback={<FacebookDashboardSkeleton />}>
+      <FacebookDashboard searchParams={props.searchParams} />
+    </Suspense>
   );
 }
