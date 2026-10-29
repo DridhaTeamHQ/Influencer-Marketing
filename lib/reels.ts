@@ -45,3 +45,18 @@ export function parseReelList(text: string) {
   }
   return { reels: [...reels].map(([shortcode, url]) => ({ shortcode, url })), errors };
 }
+
+/** Each Reel can be fetched this many times a day (India time), to stay inside the free Apify credit. */
+export const REEL_FETCHES_PER_DAY = 2;
+
+/** Today's date in India, at UTC midnight (how a @db.Date column stores it). */
+export function reelFetchDay(now = new Date()) {
+  const day = now.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  return new Date(`${day}T00:00:00Z`);
+}
+
+/** Fetches this Reel has left today. */
+export function reelFetchesLeft(reel: { fetchCount: number; fetchDay: Date | null }, now = new Date()) {
+  const used = reel.fetchDay?.getTime() === reelFetchDay(now).getTime() ? reel.fetchCount : 0;
+  return Math.max(0, REEL_FETCHES_PER_DAY - used);
+}

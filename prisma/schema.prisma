@@ -294,6 +294,9 @@ model Reel {
   fetchedAt       DateTime?
   /// Last fetch error, shown until a fetch succeeds.
   fetchError      String?
+  /// Fetches used on fetchDay (India time). Limited per day to save the free Apify credit.
+  fetchCount      Int       @default(0)
+  fetchDay        DateTime? @db.Date
   createdAt       DateTime  @default(now())
 
   influencer Influencer     @relation(fields: [influencerId], references: [id], onDelete: Cascade)

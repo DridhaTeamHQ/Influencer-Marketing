@@ -18,6 +18,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { addReels, deleteReel, fetchAllReels, fetchReel, type FormState } from "@/app/actions";
+import { REEL_FETCHES_PER_DAY } from "@/lib/reels";
 import { cn } from "@/lib/utils";
 
 /** Paste one or more Reel links for an influencer. Their numbers are fetched later with Fetch. */
@@ -84,21 +85,44 @@ function useFetchAction(run: () => Promise<{ ok: boolean; message: string }>) {
   return [pending, start] as const;
 }
 
-/** Fetches the latest numbers for one Reel from Instaflow. */
-export function FetchReelButton({ id }: { id: string }) {
+const limitTitle = (left: number) =>
+  left > 0
+    ? `${left} of ${REEL_FETCHES_PER_DAY} fetches left today`
+    : `Fetched ${REEL_FETCHES_PER_DAY} times today. Available again tomorrow.`;
+
+/** Fetches the latest numbers for one Reel from Instaflow. Limited to a few fetches a day. */
+export function FetchReelButton({ id, fetchesLeft }: { id: string; fetchesLeft: number }) {
   const [pending, start] = useFetchAction(() => fetchReel(id));
   return (
-    <Button variant="outline" size="sm" disabled={pending} onClick={start}>
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={pending || fetchesLeft === 0}
+      onClick={start}
+      title={limitTitle(fetchesLeft)}
+    >
       <RefreshCwIcon data-icon="inline-start" className={cn(pending && "animate-spin")} />
       {pending ? "Fetching…" : "Fetch"}
+      {!pending && <span className="text-muted-foreground tabular-nums">{fetchesLeft}/{REEL_FETCHES_PER_DAY}</span>}
     </Button>
   );
 }
 
-export function FetchAllReelsButton({ influencerId }: { influencerId: string }) {
+/** Fetches every Reel that still has fetches left today. `reelsLeft` is how many of them do. */
+export function FetchAllReelsButton({ influencerId, reelsLeft }: { influencerId: string; reelsLeft: number }) {
   const [pending, start] = useFetchAction(() => fetchAllReels(influencerId));
   return (
-    <Button variant="outline" size="sm" disabled={pending} onClick={start}>
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={pending || reelsLeft === 0}
+      onClick={start}
+      title={
+        reelsLeft > 0
+          ? `Fetches ${reelsLeft} reel${reelsLeft === 1 ? "" : "s"}; uses one of each reel's ${REEL_FETCHES_PER_DAY} daily fetches`
+          : "Every reel was fetched the maximum times today"
+      }
+    >
       <RefreshCwIcon data-icon="inline-start" className={cn(pending && "animate-spin")} />
       {pending ? "Fetching…" : "Fetch all"}
     </Button>

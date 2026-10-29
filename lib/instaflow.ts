@@ -17,12 +17,18 @@ export type ReelData = {
   engagementRate: number | null;
   /** When Instaflow retrieved these numbers (earlier than now if it served them from its cache). */
   fetchedAt: Date;
+  /** Instaflow answered from its own cache, so no Apify credit was used. */
+  cached: boolean;
 };
+
+/** Instaflow couldn't be reached at all, so nothing was charged. */
+export class InstaflowUnreachableError extends Error {}
 
 type AnalyzeResponse =
   | {
       success: true;
       retrievedAt: string;
+      cached: boolean;
       reel: {
         username: string | null;
         caption: string | null;
@@ -49,7 +55,7 @@ export async function fetchReelFromInstaflow(url: string): Promise<ReelData> {
     });
   } catch (err) {
     if (err instanceof Error && err.name === "TimeoutError") throw new Error("Instaflow took too long to answer. Try again.");
-    throw new Error(`Can't reach Instaflow at ${INSTAFLOW_URL}. Is it running? (set INSTAFLOW_URL)`);
+    throw new InstaflowUnreachableError(`Can't reach Instaflow at ${INSTAFLOW_URL}. Is it running? (set INSTAFLOW_URL)`);
   }
 
   let body: AnalyzeResponse;
@@ -75,6 +81,7 @@ export async function fetchReelFromInstaflow(url: string): Promise<ReelData> {
     comments: count(body.metrics.comments),
     engagementRate: body.metrics.engagementRate,
     fetchedAt: date(body.retrievedAt) ?? new Date(),
+    cached: body.cached === true,
   };
 }
 

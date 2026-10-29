@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Reel" ADD COLUMN "fetchCount" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "fetchDay" DATE;

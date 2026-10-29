@@ -32,6 +32,8 @@ export type ReelDetails = {
   fetchedAt: Date | null;
   fetchError: string | null;
   createdAt: Date;
+  /** Fetches left today (they're limited to save Apify credit). */
+  fetchesLeft: number;
   /** Newest first. */
   snapshots: { id: string; views: number | null; likes: number | null; comments: number | null; fetchedAt: Date }[];
 };
@@ -46,7 +48,16 @@ const percent = (n: number | null) => (n == null ? "—" : `${n.toFixed(2)}%`);
 const signed = (n: number) => `${n > 0 ? "+" : ""}${formatNumber(n)}`;
 
 /** Everything stored about one Reel: cover, caption, numbers, rates and every past fetch. */
-export function ReelDetailsDialog({ reel, trigger }: { reel: ReelDetails; trigger: React.ReactElement }) {
+export function ReelDetailsDialog({
+  reel,
+  trigger,
+  canFetch = true,
+}: {
+  reel: ReelDetails;
+  trigger: React.ReactElement;
+  /** False hides the Fetch button (fetching is only offered on the Reels tab). */
+  canFetch?: boolean;
+}) {
   const [imageFailed, setImageFailed] = useState(false);
   const first = reel.snapshots.at(-1);
   const sinceFirst =
@@ -155,7 +166,7 @@ export function ReelDetailsDialog({ reel, trigger }: { reel: ReelDetails; trigge
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <p className="font-medium">Fetch history</p>
-            <FetchReelButton id={reel.id} />
+            {canFetch && <FetchReelButton id={reel.id} fetchesLeft={reel.fetchesLeft} />}
           </div>
           {reel.snapshots.length === 0 ? (
             <p className="rounded-lg border py-4 text-center text-sm text-muted-foreground">

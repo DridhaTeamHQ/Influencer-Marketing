@@ -6,6 +6,10 @@ import {
   AppleIcon,
   ChevronLeftIcon,
   ExternalLinkIcon,
+  EyeIcon,
+  HeartIcon,
+  MessageCircleIcon,
+  PercentIcon,
   FilmIcon,
   InfoIcon,
   LinkIcon,
@@ -84,6 +88,7 @@ import {
   uniqueVisitors,
 } from "@/lib/format";
 import { instaflowThumbnail } from "@/lib/instaflow";
+import { REEL_FETCHES_PER_DAY, reelFetchesLeft } from "@/lib/reels";
 import { prisma } from "@/lib/prisma";
 import { getBaseUrl, influencerStoreUrls, trackingUrl } from "@/lib/tracking";
 import { routes } from "@/lib/routes";
@@ -436,6 +441,8 @@ async function InfluencerDetail({
             />
           </div>
 
+          {reels.length > 0 && <ReelsOverview reels={reels} />}
+
           <Card>
             <CardHeader>
               <CardTitle>Daily clicks and signups</CardTitle>
@@ -657,6 +664,124 @@ async function InfluencerDetail({
 
 type ReelRow = Awaited<ReturnType<typeof prisma.reel.findMany<{ include: { snapshots: true } }>>>[number];
 
+const reelsWithFetchesLeft = (reels: ReelRow[]) => reels.filter((r) => reelFetchesLeft(r) > 0).length;
+
+const sum = (values: (number | null)[]) => values.reduce<number>((total, n) => total + (n ?? 0), 0);
+
+/** Totals across all of an influencer's Reels (as of each Reel's last fetch), and the Reels ranked by views. */
+function ReelsOverview({ reels }: { reels: ReelRow[] }) {
+  const fetched = reels.filter((r) => r.fetchedAt);
+  const views = sum(fetched.map((r) => r.views));
+  const likes = sum(fetched.map((r) => r.likes));
+  const comments = sum(fetched.map((r) => r.comments));
+  // Only Reels with all three numbers count toward the overall rate, so hidden likes don't drag it down.
+  const complete = fetched.filter((r) => r.views != null && r.views > 0 && r.likes != null && r.comments != null);
+  const completeViews = sum(complete.map((r) => r.views));
+  const engagement = completeViews
+    ? ((sum(complete.map((r) => r.likes)) + sum(complete.map((r) => r.comments))) / completeViews) * 100
+    : null;
+  /** Views gained between each Reel's last two fetches. */
+  const recentGrowth = sum(
+    reels.map(({ snapshots: [latest, previous] }) =>
+      latest?.views != null && previous?.views != null ? latest.views - previous.views : null,
+    ),
+  );
+  const lastFetched = fetched.reduce<Date | null>(
+    (latest, r) => (!latest || r.fetchedAt! > latest ? r.fetchedAt : latest),
+    null,
+  );
+  const ranked = [...reels].sort((a, b) => (b.views ?? -1) - (a.views ?? -1));
+  const notFetched = reels.length - fetched.length;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <FilmIcon className="size-4 text-primary" />
+          Instagram reels
+        </CardTitle>
+        <CardDescription>
+          {formatNumber(reels.length)} reel{reels.length === 1 ? "" : "s"}
+          {lastFetched ? ` · last fetched ${timeAgo(lastFetched)}` : " · not fetched yet"}
+          {notFetched > 0 && fetched.length > 0 && ` · ${notFetched} not fetched yet`}. All time, not limited to the
+          range above. Fetch them from the Reels tab.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            icon={<EyeIcon />}
+            label="Reel views"
+            value={fetched.length ? formatNumber(views) : "—"}
+            hint={recentGrowth ? `${recentGrowth > 0 ? "+" : ""}${formatNumber(recentGrowth)} since previous fetch` : "Total across reels"}
+          />
+          <StatCard
+            icon={<HeartIcon />}
+            accent="others"
+            label="Likes"
+            value={fetched.length ? formatNumber(likes) : "—"}
+            hint="Total across reels"
+          />
+          <StatCard
+            icon={<MessageCircleIcon />}
+            accent="ios"
+            label="Comments"
+            value={fetched.length ? formatNumber(comments) : "—"}
+            hint="Total across reels"
+          />
+          <StatCard
+            icon={<PercentIcon />}
+            accent="signups"
+            label="Engagement"
+            value={engagement == null ? "—" : `${engagement.toFixed(2)}%`}
+            hint="(likes + comments) / views"
+          />
+        </div>
+
+        <ul className="divide-y rounded-lg border">
+          {ranked.map((reel) => (
+            <li key={reel.id} className="flex items-center gap-3 px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <ReelDetailsDialog
+                  reel={{ ...reel, thumbnailSrc: instaflowThumbnail(reel.thumbnailUrl), fetchesLeft: reelFetchesLeft(reel) }}
+                  canFetch={false}
+                  trigger={
+                    <button
+                      type="button"
+                      className="text-left font-mono text-sm font-medium underline-offset-4 hover:underline"
+                    >
+                      {reel.shortcode}
+                    </button>
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  {reel.fetchError
+                    ? "Last fetch failed"
+                    : reel.publishedAt
+                      ? `Posted ${formatDate(reel.publishedAt)}`
+                      : "Not fetched yet"}
+                </p>
+              </div>
+              <dl className="flex gap-4 text-right text-sm tabular-nums">
+                {[
+                  { label: "Views", value: reel.views },
+                  { label: "Likes", value: reel.likes },
+                  { label: "Comments", value: reel.comments, wide: true },
+                ].map((m) => (
+                  <div key={m.label} className={m.wide ? "hidden sm:block" : undefined}>
+                    <dt className="text-xs text-muted-foreground">{m.label}</dt>
+                    <dd className="font-medium">{m.value == null ? "—" : formatCompact(m.value)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
 /** Instagram Reels with the numbers from the last fetch. Nothing is fetched until Fetch is clicked. */
 function ReelsCard({ influencerId, reels }: { influencerId: string; reels: ReelRow[] }) {
   const count = (n: number | null) => (n == null ? "—" : formatNumber(n));
@@ -677,10 +802,11 @@ function ReelsCard({ influencerId, reels }: { influencerId: string; reels: ReelR
           Instagram reels
         </CardTitle>
         <CardDescription>
-          Public views, likes and comments from Instaflow, as of the fetch time. Click Fetch to update.
+          Public views, likes and comments from Instaflow, as of the fetch time. Each reel can be fetched{" "}
+          {REEL_FETCHES_PER_DAY} times a day to save free credit.
         </CardDescription>
         <CardAction className="flex gap-2">
-          {reels.length > 0 && <FetchAllReelsButton influencerId={influencerId} />}
+          {reels.length > 0 && <FetchAllReelsButton influencerId={influencerId} reelsLeft={reelsWithFetchesLeft(reels)} />}
           <AddReelsDialog
             influencerId={influencerId}
             trigger={
@@ -716,7 +842,7 @@ function ReelsCard({ influencerId, reels }: { influencerId: string; reels: ReelR
               <TableRow key={reel.id}>
                 <TableCell className="pl-4">
                   <ReelDetailsDialog
-                    reel={{ ...reel, thumbnailSrc: instaflowThumbnail(reel.thumbnailUrl) }}
+                    reel={{ ...reel, thumbnailSrc: instaflowThumbnail(reel.thumbnailUrl), fetchesLeft: reelFetchesLeft(reel) }}
                     trigger={
                       <button
                         type="button"
@@ -758,9 +884,9 @@ function ReelsCard({ influencerId, reels }: { influencerId: string; reels: ReelR
                 </TableCell>
                 <TableCell className="pr-4">
                   <div className="flex justify-end gap-0.5">
-                    <FetchReelButton id={reel.id} />
+                    <FetchReelButton id={reel.id} fetchesLeft={reelFetchesLeft(reel)} />
                     <ReelDetailsDialog
-                      reel={{ ...reel, thumbnailSrc: instaflowThumbnail(reel.thumbnailUrl) }}
+                      reel={{ ...reel, thumbnailSrc: instaflowThumbnail(reel.thumbnailUrl), fetchesLeft: reelFetchesLeft(reel) }}
                       trigger={
                         <Button variant="ghost" size="icon-sm" aria-label={`Details of reel ${reel.shortcode}`}>
                           <InfoIcon />

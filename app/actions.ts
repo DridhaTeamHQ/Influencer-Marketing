@@ -10,8 +10,8 @@ import { generateCode } from "@/lib/tracking";
 import { SESSION_COOKIE, isValidSessionToken } from "@/lib/auth";
 import { REFERRAL_CODE_PATTERN, isReferralCodeTaken, suggestReferralCode } from "@/lib/referrals";
 import { routes } from "@/lib/routes";
-import { fetchReelFromInstaflow } from "@/lib/instaflow";
-import { parseReelList } from "@/lib/reels";
+import { InstaflowUnreachableError, fetchReelFromInstaflow } from "@/lib/instaflow";
+import { REEL_FETCHES_PER_DAY, parseReelList, reelFetchDay } from "@/lib/reels";
 
 export type FormState = {
   ok?: boolean;
@@ -297,10 +297,40 @@ export async function deleteReel(id: string) {
   refresh();
 }
 
+/**
+ * Takes one of today's fetches for a Reel. Done in the database so two quick clicks can't both pass.
+ * Returns false when the Reel has used all of today's fetches.
+ */
+async function takeReelFetch(id: string) {
+  const today = reelFetchDay();
+  const sameDay = await prisma.reel.updateMany({
+    where: { id, fetchDay: today, fetchCount: { lt: REEL_FETCHES_PER_DAY } },
+    data: { fetchCount: { increment: 1 } },
+  });
+  if (sameDay.count) return true;
+  const newDay = await prisma.reel.updateMany({
+    where: { id, OR: [{ fetchDay: null }, { fetchDay: { not: today } }] },
+    data: { fetchDay: today, fetchCount: 1 },
+  });
+  return newDay.count > 0;
+}
+
+/** Gives a fetch back when it cost nothing (Instaflow unreachable, or it answered from its cache). */
+async function returnReelFetch(id: string) {
+  await prisma.reel.updateMany({
+    where: { id, fetchDay: reelFetchDay(), fetchCount: { gt: 0 } },
+    data: { fetchCount: { decrement: 1 } },
+  });
+}
+
+const LIMIT_MESSAGE = `Already fetched ${REEL_FETCHES_PER_DAY} times today. Try again tomorrow.`;
+
 /** Fetches the latest numbers for one Reel and keeps them as a snapshot with the fetch time. */
 async function fetchAndStoreReel(reel: { id: string; url: string; fetchedAt: Date | null }) {
+  if (!(await takeReelFetch(reel.id))) return { ok: false as const, limited: true, message: LIMIT_MESSAGE };
   try {
-    const { fetchedAt, ...data } = await fetchReelFromInstaflow(reel.url);
+    const { fetchedAt, cached, ...data } = await fetchReelFromInstaflow(reel.url);
+    if (cached) await returnReelFetch(reel.id);
     await prisma.reel.update({
       where: { id: reel.id },
       data: {
@@ -313,11 +343,12 @@ async function fetchAndStoreReel(reel: { id: string; url: string; fetchedAt: Dat
           : {}),
       },
     });
-    return { ok: true as const };
+    return { ok: true as const, cached };
   } catch (err) {
+    if (err instanceof InstaflowUnreachableError) await returnReelFetch(reel.id);
     const message = err instanceof Error ? err.message : "Fetch failed";
     await prisma.reel.update({ where: { id: reel.id }, data: { fetchError: message } });
-    return { ok: false as const, message };
+    return { ok: false as const, limited: false, message };
   }
 }
 
@@ -326,23 +357,27 @@ export async function fetchReel(id: string): Promise<{ ok: boolean; message: str
   const reel = await prisma.reel.findUniqueOrThrow({ where: { id }, select: { id: true, url: true, fetchedAt: true } });
   const result = await fetchAndStoreReel(reel);
   refresh();
-  return result.ok ? { ok: true, message: "Reel data updated" } : { ok: false, message: result.message };
+  if (!result.ok) return { ok: false, message: result.message };
+  return { ok: true, message: result.cached ? "Reel data is up to date (fetched within the last hour)" : "Reel data updated" };
 }
 
-/** Fetches every Reel of an influencer, one at a time (Instaflow allows only a few requests a minute). */
+/** Fetches every Reel of an influencer, one at a time. Reels out of fetches for today are skipped. */
 export async function fetchAllReels(influencerId: string): Promise<{ ok: boolean; message: string }> {
   await requireAdmin();
   const reels = await prisma.reel.findMany({ where: { influencerId }, select: { id: true, url: true, fetchedAt: true } });
   let done = 0;
+  let limited = 0;
   let lastError: string | undefined;
   for (const reel of reels) {
     const result = await fetchAndStoreReel(reel);
     if (result.ok) done++;
+    else if (result.limited) limited++;
     else lastError = result.message;
   }
   refresh();
-  if (!lastError) return { ok: true, message: `Updated ${done} reel${done === 1 ? "" : "s"}` };
-  return { ok: false, message: `Updated ${done} of ${reels.length}. ${lastError}` };
+  const skipped = limited ? ` · ${limited} skipped (already fetched ${REEL_FETCHES_PER_DAY} times today)` : "";
+  if (!lastError) return { ok: done > 0, message: `Updated ${done} reel${done === 1 ? "" : "s"}${skipped}` };
+  return { ok: false, message: `Updated ${done} of ${reels.length}${skipped}. ${lastError}` };
 }
 
 // ---------- Links ----------
