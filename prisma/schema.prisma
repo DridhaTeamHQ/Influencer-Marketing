@@ -52,6 +52,7 @@ model Influencer {
   link         Link?
   signupCounts SignupCount[]
   coupons      Coupon[]
+  reels        Reel[]
 
   @@index([createdAt])
 }
@@ -268,4 +269,50 @@ model ReferralDownload {
   count     Int
   note      String?
   updatedAt DateTime @updatedAt
+}
+
+/// An Instagram Reel posted by an influencer. Numbers are copied from Instaflow only when "Fetch" is clicked.
+model Reel {
+  id              String    @id @default(cuid())
+  influencerId    String
+  /// Instagram's id in the link, e.g. "DQx1AbCdEfG" in /reel/DQx1AbCdEfG/.
+  shortcode       String
+  /// Canonical https://www.instagram.com/reel/{shortcode}/
+  url             String
+  /// Latest fetched values. Null means never fetched or not public (never 0 for unknown).
+  username        String?
+  caption         String?
+  thumbnailUrl    String?
+  publishedAt     DateTime?
+  durationSeconds Float?
+  views           Int?
+  likes           Int?
+  comments        Int?
+  /// ((likes + comments) / views) * 100, as reported by Instaflow.
+  engagementRate  Float?
+  /// When Instaflow retrieved the latest numbers.
+  fetchedAt       DateTime?
+  /// Last fetch error, shown until a fetch succeeds.
+  fetchError      String?
+  createdAt       DateTime  @default(now())
+
+  influencer Influencer     @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+  snapshots  ReelSnapshot[]
+
+  @@unique([influencerId, shortcode])
+  @@index([influencerId, createdAt])
+}
+
+/// One successful fetch of a Reel's numbers, so growth can be followed over time.
+model ReelSnapshot {
+  id        String   @id @default(cuid())
+  reelId    String
+  views     Int?
+  likes     Int?
+  comments  Int?
+  fetchedAt DateTime
+
+  reel Reel @relation(fields: [reelId], references: [id], onDelete: Cascade)
+
+  @@index([reelId, fetchedAt])
 }

@@ -241,6 +241,26 @@ export function InfluencerFormDialog({
               </Field>
             </div>
 
+            <Field data-invalid={!!err("reels") || undefined}>
+              <FieldLabel htmlFor="reels">{influencer ? "Add Instagram reels" : "Instagram reels"}</FieldLabel>
+              <Textarea
+                id="reels"
+                name="reels"
+                defaultValue={v("reels")}
+                placeholder="https://www.instagram.com/reel/ABC123/"
+                rows={2}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                aria-invalid={!!err("reels")}
+              />
+              <FieldDescription>
+                Optional. One link per line. Fetch their views and likes from the Reels section on the profile
+                {influencer && ", where you can also add or remove reels"}.
+              </FieldDescription>
+              <FieldError errors={err("reels")} />
+            </Field>
+
             <Field>
               <FieldLabel htmlFor="notes">Notes</FieldLabel>
               <Textarea id="notes" name="notes" defaultValue={v("notes", influencer?.notes)} placeholder="Deal terms, contact info…" rows={3} />

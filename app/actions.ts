@@ -10,6 +10,8 @@ import { generateCode } from "@/lib/tracking";
 import { SESSION_COOKIE, isValidSessionToken } from "@/lib/auth";
 import { REFERRAL_CODE_PATTERN, isReferralCodeTaken, suggestReferralCode } from "@/lib/referrals";
 import { routes } from "@/lib/routes";
+import { fetchReelFromInstaflow } from "@/lib/instaflow";
+import { parseReelList } from "@/lib/reels";
 
 export type FormState = {
   ok?: boolean;
@@ -170,6 +172,8 @@ export async function createInfluencer(_prev: FormState, formData: FormData): Pr
     return { errors: z.flattenError(parsed.error).fieldErrors, values: formValues(formData) };
   }
   const { slug, referralCode, ...data } = parsed.data;
+  const reelList = parseReelList(String(formData.get("reels") ?? ""));
+  if (reelList.errors.length) return { errors: { reels: reelList.errors }, values: formValues(formData) };
 
   if (slug && (await isSlugTaken(prisma, slug))) return slugTakenError(slug, formData);
   if (referralCode && (await isReferralCodeTaken(prisma, referralCode))) {
@@ -182,6 +186,9 @@ export async function createInfluencer(_prev: FormState, formData: FormData): Pr
     });
     const code = slug ?? (await suggestSlug(tx, data.handle ?? data.name));
     await tx.link.create({ data: { code, influencerId: influencer.id } });
+    if (reelList.reels.length) {
+      await tx.reel.createMany({ data: reelList.reels.map((r) => ({ ...r, influencerId: influencer.id })) });
+    }
     return { code, referralCode: influencer.referralCode };
   });
 
@@ -203,6 +210,8 @@ export async function updateInfluencer(
     return { errors: z.flattenError(parsed.error).fieldErrors, values: formValues(formData) };
   }
   const { slug, referralCode, ...data } = parsed.data;
+  const reelList = parseReelList(String(formData.get("reels") ?? ""));
+  if (reelList.errors.length) return { errors: { reels: reelList.errors }, values: formValues(formData) };
   const link = await prisma.link.findUnique({ where: { influencerId: id }, select: { id: true, code: true } });
 
   if (
@@ -227,6 +236,12 @@ export async function updateInfluencer(
       await tx.link.update({ where: { id: link.id }, data: { code: slug } });
     } else if (!link) {
       await tx.link.create({ data: { influencerId: id, code: slug ?? (await suggestSlug(tx, data.handle ?? data.name)) } });
+    }
+    if (reelList.reels.length) {
+      await tx.reel.createMany({
+        data: reelList.reels.map((r) => ({ ...r, influencerId: id })),
+        skipDuplicates: true,
+      });
     }
   });
 
@@ -253,6 +268,81 @@ export async function deleteInfluencer(id: string) {
     await tx.influencer.delete({ where: { id } });
   });
   redirect(routes.influencers);
+}
+
+// ---------- Reels (Instagram, numbers fetched through Instaflow) ----------
+
+/** Adds Reel links to an influencer. Links already added are skipped. Nothing is fetched yet. */
+export async function addReels(influencerId: string, _prev: FormState, formData: FormData): Promise<FormState> {
+  await requireAdmin();
+  const { reels, errors } = parseReelList(String(formData.get("reels") ?? ""));
+  if (errors.length) return { errors: { reels: errors }, values: formValues(formData) };
+  if (!reels.length) return { errors: { reels: ["Paste at least one Reel link"] }, values: formValues(formData) };
+
+  const { count } = await prisma.reel.createMany({
+    data: reels.map((r) => ({ ...r, influencerId })),
+    skipDuplicates: true,
+  });
+  refresh();
+  const skipped = reels.length - count;
+  return {
+    ok: true,
+    message: `Added ${count} reel${count === 1 ? "" : "s"}${skipped ? ` · ${skipped} already added` : ""}`,
+  };
+}
+
+export async function deleteReel(id: string) {
+  await requireAdmin();
+  await prisma.reel.delete({ where: { id } });
+  refresh();
+}
+
+/** Fetches the latest numbers for one Reel and keeps them as a snapshot with the fetch time. */
+async function fetchAndStoreReel(reel: { id: string; url: string; fetchedAt: Date | null }) {
+  try {
+    const { fetchedAt, ...data } = await fetchReelFromInstaflow(reel.url);
+    await prisma.reel.update({
+      where: { id: reel.id },
+      data: {
+        ...data,
+        fetchedAt,
+        fetchError: null,
+        // Instaflow may answer from its cache; only a newer fetch time is a new snapshot.
+        ...(reel.fetchedAt?.getTime() !== fetchedAt.getTime()
+          ? { snapshots: { create: { views: data.views, likes: data.likes, comments: data.comments, fetchedAt } } }
+          : {}),
+      },
+    });
+    return { ok: true as const };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Fetch failed";
+    await prisma.reel.update({ where: { id: reel.id }, data: { fetchError: message } });
+    return { ok: false as const, message };
+  }
+}
+
+export async function fetchReel(id: string): Promise<{ ok: boolean; message: string }> {
+  await requireAdmin();
+  const reel = await prisma.reel.findUniqueOrThrow({ where: { id }, select: { id: true, url: true, fetchedAt: true } });
+  const result = await fetchAndStoreReel(reel);
+  refresh();
+  return result.ok ? { ok: true, message: "Reel data updated" } : { ok: false, message: result.message };
+}
+
+/** Fetches every Reel of an influencer, one at a time (Instaflow allows only a few requests a minute). */
+export async function fetchAllReels(influencerId: string): Promise<{ ok: boolean; message: string }> {
+  await requireAdmin();
+  const reels = await prisma.reel.findMany({ where: { influencerId }, select: { id: true, url: true, fetchedAt: true } });
+  let done = 0;
+  let lastError: string | undefined;
+  for (const reel of reels) {
+    const result = await fetchAndStoreReel(reel);
+    if (result.ok) done++;
+    else lastError = result.message;
+  }
+  refresh();
+  if (!lastError) return { ok: true, message: `Updated ${done} reel${done === 1 ? "" : "s"}` };
+  return { ok: false, message: `Updated ${done} of ${reels.length}. ${lastError}` };
 }
 
 // ---------- Links ----------
