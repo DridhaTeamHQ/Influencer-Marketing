@@ -6,37 +6,22 @@ import {
   FileSpreadsheetIcon,
   TicketIcon,
   Trash2Icon,
-  TrophyIcon,
   UserMinusIcon,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
-import { ChartListTable } from "@/components/stores/chart-list";
-import {
-  AppReferrerForm,
-  ChartForm,
-  DeleteRankingButton,
-  DeletionsTotalForm,
-  PlayUninstallsForm,
-  ReferralForm,
-} from "@/components/stores/import-forms";
-import { Badge } from "@/components/ui/badge";
+import { AppReferrerForm, DeletionsTotalForm, PlayUninstallsForm, ReferralForm } from "@/components/stores/import-forms";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { prisma } from "@/lib/prisma";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/utils";
-import { getLatestChart, getRankings } from "@/lib/stores/rankings";
 import { APPLE_REFERRER_REPORTS, daysAgo, isoDay } from "@/lib/stores/shared";
 import { PLAY_IMPORT_REPORT, deletionsLeftOut } from "@/lib/stores/stats";
 
 const DESCRIPTION = "Numbers the store APIs don’t give. Pick what you want to add.";
 
-const STORE_NAMES = { GOOGLE_PLAY: "Play Store", APP_STORE: "App Store" } as const;
-
 /** Everything that can be imported or typed in, in list order. */
 const SECTIONS = {
-  ranking: { title: "Store ranking", store: "Both stores", icon: TrophyIcon },
   deletions: { title: "App Store deletions", store: "App Store", icon: Trash2Icon },
   referrers: { title: "App Store referrer CSV", store: "App Store", icon: FileSpreadsheetIcon },
   uninstalls: { title: "Uninstalls CSV", store: "Play Store", icon: UserMinusIcon },
@@ -80,28 +65,18 @@ const latestDay = async (report: string) => {
 async function ImportSections({ searchParams }: Pick<PageProps<"/dridha/import">, "searchParams">) {
   await connection();
   const requested = (await searchParams).section;
-  const section: Section = typeof requested === "string" && requested in SECTIONS ? (requested as Section) : "ranking";
+  const section: Section = typeof requested === "string" && requested in SECTIONS ? (requested as Section) : "deletions";
 
-  const [rankings, deletions, referrersTo, uninstallsTo, referral, playChart, appleChart] = await Promise.all([
-    getRankings(),
+  const [deletions, referrersTo, uninstallsTo, referral] = await Promise.all([
     deletionsLeftOut(),
     latestDay(APPLE_REFERRER_REPORTS.CSV),
     latestDay(PLAY_IMPORT_REPORT),
     prisma.referralDownload.findFirst({ orderBy: { date: "desc" }, select: { date: true } }),
-    getLatestChart("GOOGLE_PLAY"),
-    getLatestChart("APP_STORE"),
   ]);
-  const charts = [
-    { name: "Play Store", chart: playChart },
-    { name: "App Store", chart: appleChart },
-  ];
   const today = daysAgo(0);
 
   /** What's saved so far, shown under each row's title. */
   const status: Record<Section, string> = {
-    ranking: rankings.length
-      ? `${rankings.length} ${rankings.length === 1 ? "entry" : "entries"} · last ${shortDate(rankings[0]!.date)}`
-      : "Nothing entered yet",
     deletions: deletions ? `${deletions.total} all time, up to ${shortDate(deletions.asOf)}` : "Nothing entered yet",
     referrers: referrersTo ? `Imported up to ${shortDate(referrersTo)}` : "Not imported yet",
     uninstalls: uninstallsTo ? `Imported up to ${shortDate(uninstallsTo)}` : "Not imported yet",
@@ -149,74 +124,6 @@ async function ImportSections({ searchParams }: Pick<PageProps<"/dridha/import">
           })}
         </ul>
       </Card>
-
-      {section === "ranking" && (
-        <Card className="pb-0">
-          <CardHeader>
-            <CardTitle>Store ranking</CardTitle>
-            <CardDescription>
-              Upload the store’s top 50 list; DailyMattr’s place in it is saved with today’s date. Shown on the Play
-              Store and App Store pages, where the list opens on click. Not in Overall.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className={cn("space-y-6", !rankings.length && "pb-6")}>
-            <div className="space-y-3">
-              <Steps>
-                <li>
-                  Make a CSV of the store chart with columns <B>Rank</B>, <B>App name</B> and, if you want,{" "}
-                  <B>Developer</B>. One app per row.
-                </li>
-                <li>Pick the store and upload it. If DailyMattr is in the list, its position is saved too.</li>
-              </Steps>
-              <ChartForm />
-            </div>
-
-            {charts.some((c) => c.chart) && (
-              <div className="grid gap-6 md:grid-cols-2">
-                {charts.map(({ name, chart }) => (
-                  <div key={name} className="space-y-2">
-                    <p className="text-sm font-medium">
-                      {name} list
-                      {chart && <span className="ml-2 font-normal text-muted-foreground">{shortDate(chart.date)}</span>}
-                    </p>
-                    <ChartListTable chart={chart} />
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-          {rankings.length > 0 && (
-            <div className="max-h-96 overflow-y-auto border-t">
-              <Table>
-                <TableHeader className="sticky top-0 bg-card">
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="pl-6">Date</TableHead>
-                    <TableHead>Store</TableHead>
-                    <TableHead className="text-right">Position</TableHead>
-                    <TableHead className="w-12 pr-6">
-                      <span className="sr-only">Delete</span>
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rankings.map((r) => (
-                    <TableRow key={r.id}>
-                      <TableCell className="pl-6 text-muted-foreground">{shortDate(r.date)}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{STORE_NAMES[r.store]}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-medium tabular-nums">#{r.rank}</TableCell>
-                      <TableCell className="pr-6">
-                        <DeleteRankingButton id={r.id} label={`#${r.rank} on ${STORE_NAMES[r.store]}, ${shortDate(r.date)}`} />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </Card>
-      )}
 
       {section === "deletions" && (
         <Card>

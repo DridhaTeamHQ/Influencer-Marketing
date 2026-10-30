@@ -14,7 +14,7 @@ export const b64url = (value: string | Buffer) => Buffer.from(value).toString("b
 
 export const isoDay = (date: Date) => date.toISOString().slice(0, 10);
 
-/** Today's date in India (YYYY-MM-DD), for numbers typed in or uploaded on the import page. */
+/** Today's date in India (YYYY-MM-DD), for imported numbers and the daily store charts. */
 export const indiaToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
 /** Midnight UTC of a YYYY-MM-DD date, as Prisma stores @db.Date values. */

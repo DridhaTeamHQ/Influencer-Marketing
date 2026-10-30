@@ -162,55 +162,6 @@ export function parseAppReferrerCsv(text: string): ParsedReferrers {
   return { rows: result, referrers: [...new Set(result.map((r) => r.referrer))] };
 }
 
-export type ParsedChart = { rank: number; appName: string; developer: string }[];
-
-const RANK_HEADER = /^(rank|ranking|#|no\.?|position|pos\.?|place)$/i;
-const NAME_HEADER = /^(app|app name|name|title|application)$/i;
-const DEVELOPER_HEADER = /developer|publisher|company|seller|studio/i;
-
-/**
- * Reads a store top-chart list. Accepts a header row with a rank column (Rank, #, Position), an
- * app name column (App, Name, Title) and optionally a developer column; or no header, as
- * "rank, name[, developer]" rows or just one app name per row in chart order.
- */
-export function parseChartCsv(text: string): ParsedChart {
-  const rows = readRows(text).filter((r) => r.some((c) => c));
-  if (rows.length === 0) throw new Error("The file is empty.");
-
-  const headerIndex = rows.findIndex((r) => r.some((c) => NAME_HEADER.test(c)));
-  // A header row with a rank column but no app names would otherwise be read as names.
-  if (headerIndex < 0 && rows[0]!.some((c) => RANK_HEADER.test(c))) {
-    throw new Error("Couldn’t find the app names. Name that column “App name” (or App, Name, Title).");
-  }
-  let entries: ParsedChart;
-  if (headerIndex >= 0) {
-    const header = rows[headerIndex]!;
-    const nameCol = header.findIndex((c) => NAME_HEADER.test(c));
-    const rankCol = header.findIndex((c) => RANK_HEADER.test(c));
-    const devCol = header.findIndex((c, i) => i !== nameCol && DEVELOPER_HEADER.test(c));
-    entries = rows.slice(headerIndex + 1).map((r, i) => ({
-      rank: rankCol >= 0 ? Number.parseInt(r[rankCol] ?? "", 10) : i + 1,
-      appName: r[nameCol] ?? "",
-      developer: devCol >= 0 ? (r[devCol] ?? "") : "",
-    }));
-  } else if (rows.every((r) => /^#?\d+\.?$/.test(r[0] ?? ""))) {
-    entries = rows.map((r) => ({ rank: Number.parseInt((r[0] ?? "").replace(/\D/g, ""), 10), appName: r[1] ?? "", developer: r[2] ?? "" }));
-  } else {
-    entries = rows.map((r, i) => ({ rank: i + 1, appName: r[0] ?? "", developer: r[1] ?? "" }));
-  }
-
-  const byRank = new Map<number, ParsedChart[number]>();
-  for (const e of entries) {
-    const appName = e.appName.trim();
-    if (!appName || !Number.isInteger(e.rank) || e.rank < 1 || e.rank > 500) continue;
-    // The first app listed at a position wins if a position repeats.
-    if (!byRank.has(e.rank)) byRank.set(e.rank, { rank: e.rank, appName, developer: e.developer.trim() });
-  }
-  const result = [...byRank.values()].sort((a, b) => a.rank - b.rank);
-  if (result.length === 0) throw new Error("No apps found. Use columns like Rank, App name (and Developer), one app per row.");
-  return result;
-}
-
 export type ParsedReferralCodes = { total: number; codes: number; used: number };
 
 /** Adds up the "Usage Count" column of the referral portal's referral-codes export. */

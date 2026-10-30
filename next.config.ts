@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
     agentFeedback: true,
   },
   cacheComponents: true,
+  // Reads Play's store pages with Node's http stack; load it as is rather than bundling it.
+  serverExternalPackages: ["google-play-scraper"],
   // Thumbnail proxy requests carry very long CDN URLs and flood the dev terminal.
   logging: {
     incomingRequests: { ignore: [/\/social\/[^/]+\/image/] },

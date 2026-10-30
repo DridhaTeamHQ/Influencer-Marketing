@@ -3,6 +3,8 @@ import { ChartListTable } from "@/components/stores/chart-list";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { timeAgo } from "@/lib/format";
+import type { ChartStatus } from "@/lib/stores/charts";
 import type { ChartList, RankingSummary } from "@/lib/stores/rankings";
 
 const shortDate = (day: string) =>
@@ -24,24 +26,41 @@ function Move({ latest, previous }: { latest: number; previous: number }) {
   );
 }
 
+/** How many apps of the chart the list shows; our app is added below if it's further down. */
+const TOP = 150;
+
 /**
- * The store position from the top-chart list uploaded on the Import page; clicking it opens the
- * list. Only on the Play Store and App Store views.
+ * Our position in the store's Top free chart for our category (fetched on every sync and daily by cron);
+ * clicking it opens the top 150. Only on the Play Store and App Store views.
  */
 export function RankingCard({
   store,
+  label,
   ranking,
   chart,
+  status,
 }: {
   store: string;
+  /** Which chart, e.g. "Top free · News & Magazines · India". */
+  label: string;
   ranking: RankingSummary | null;
   chart: ChartList | null;
+  status: ChartStatus;
 }) {
-  const position = ranking && (
+  // A position from an older day than the latest list means we've dropped out of the chart since.
+  const current = ranking && (!chart || ranking.latest.date >= chart.date) ? ranking : null;
+  const position = current ? (
     <span className="flex items-center gap-3">
-      <span className="text-4xl font-semibold tabular-nums">#{ranking.latest.rank}</span>
-      {ranking.previous && <Move latest={ranking.latest.rank} previous={ranking.previous.rank} />}
+      <span className="text-4xl font-semibold tabular-nums">#{current.latest.rank}</span>
+      {current.previous && <Move latest={current.latest.rank} previous={current.previous.rank} />}
     </span>
+  ) : (
+    chart && (
+      <span className="text-sm text-muted-foreground">
+        DailyMattr isn’t in the top {chart.entries.length}
+        {ranking && ` (last #${ranking.latest.rank} on ${shortDate(ranking.latest.date)})`}
+      </span>
+    )
   );
 
   return (
@@ -52,10 +71,17 @@ export function RankingCard({
           Store ranking
         </CardTitle>
         <CardDescription>
-          {ranking ? `From the top list uploaded ${shortDate(ranking.latest.date)}` : "Upload the top 50 list on the Import page"}
+          {label}
+          {status && !status.error && ` · updated ${timeAgo(status.fetchedAt)}`}
+          {!status && !chart && " · updates on the next sync"}
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-col gap-3">
+        {status?.error && (
+          <p className="text-xs text-destructive">
+            Couldn’t fetch the chart {timeAgo(status.fetchedAt)}: {status.error}
+          </p>
+        )}
         {!ranking && !chart ? (
           <p className="py-4 text-center text-sm text-muted-foreground">No ranking yet.</p>
         ) : (
@@ -66,18 +92,22 @@ export function RankingCard({
                   render={<button type="button" />}
                   className="group flex cursor-pointer items-center gap-4 rounded-lg text-left"
                 >
-                  {position ?? <span className="text-sm text-muted-foreground">DailyMattr isn’t in the latest list</span>}
+                  {position}
                   <span className="flex items-center gap-1 text-sm text-muted-foreground group-hover:text-foreground">
-                    View top {chart.entries.length}
+                    View top {Math.min(TOP, chart.entries.length)}
                     <ChevronRightIcon className="size-4" />
                   </span>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-lg">
                   <DialogHeader>
-                    <DialogTitle>{store} top {chart.entries.length}</DialogTitle>
-                    <DialogDescription>Uploaded {shortDate(chart.date)} · DailyMattr is highlighted</DialogDescription>
+                    <DialogTitle>
+                      {store} top {Math.min(TOP, chart.entries.length)}
+                    </DialogTitle>
+                    <DialogDescription>
+                      {label} · {shortDate(chart.date)} · DailyMattr is highlighted
+                    </DialogDescription>
                   </DialogHeader>
-                  <ChartListTable chart={chart} />
+                  <ChartListTable chart={chart} top={TOP} />
                 </DialogContent>
               </Dialog>
             ) : (

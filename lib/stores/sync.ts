@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { AppStore } from "@/lib/generated/prisma/enums";
 import { appStoreMissingEnv, syncAppStore } from "@/lib/stores/app-store";
+import { syncStoreChart } from "@/lib/stores/charts";
 import { googlePlayMissingEnv, syncGooglePlay } from "@/lib/stores/google-play";
 import { errorMessage } from "@/lib/stores/shared";
 
@@ -38,8 +39,8 @@ export async function getSyncStatus(store: AppStore): Promise<SyncStatus> {
 const running = new Map<AppStore, Promise<void>>();
 
 /**
- * Copies new store reports into the database and records how it went. Never throws.
- * `oidcToken` is Vercel's token from the request (Google Play's keyless sign-in).
+ * Copies new store reports into the database, refreshes today's top chart and records how it went.
+ * Never throws. `oidcToken` is Vercel's token from the request (Google Play's keyless sign-in).
  */
 export function runSync(store: AppStore, oidcToken: string | null) {
   const existing = running.get(store);
@@ -47,6 +48,8 @@ export function runSync(store: AppStore, oidcToken: string | null) {
 
   const job = (async () => {
     let error: string | null = null;
+    // The chart is public, so it updates even when the reports fail.
+    const chart = syncStoreChart(store);
     try {
       if (store === "GOOGLE_PLAY") await syncGooglePlay(oidcToken);
       else await syncAppStore();
@@ -63,6 +66,7 @@ export function runSync(store: AppStore, oidcToken: string | null) {
       create: { key: attemptKey(store), error },
       update: { error, syncedAt: new Date() },
     });
+    await chart;
   })().finally(() => running.delete(store));
   running.set(store, job);
   return job;

@@ -40,6 +40,7 @@ import {
   type ReferralPoint,
   type StoreReport,
 } from "@/lib/stores/stats";
+import { CHART_LABELS, getChartStatus, syncStoreChart } from "@/lib/stores/charts";
 import { getLatestChart, getRankingSummary } from "@/lib/stores/rankings";
 import { getSyncStatus, missingEnvFor, runSync } from "@/lib/stores/sync";
 
@@ -207,10 +208,16 @@ export async function StoreDashboard({
     }),
   );
 
+  // Rankings are per store, so they only show on a single store's page. The chart is fetched with
+  // each sync; if it never has been yet, fetch it now so the card isn't empty.
+  let chartStatus = overall ? null : await getChartStatus(stores[0]!);
+  if (!overall && !chartStatus) {
+    await syncStoreChart(stores[0]!);
+    chartStatus = await getChartStatus(stores[0]!);
+  }
   const [reports, referrals, ranking, chart] = await Promise.all([
     Promise.all(stores.map((store) => getStoreReport(store, range))),
     overall ? getReferralReport() : undefined,
-    // Rankings are per store, so they only show on a single store's page.
     overall ? null : getRankingSummary(stores[0]!),
     overall ? null : getLatestChart(stores[0]!),
   ]);
@@ -325,7 +332,7 @@ export async function StoreDashboard({
 
       {referrals && <ReferralSection {...referrals} />}
 
-      {!overall && <RankingCard store={config.title} ranking={ranking} chart={chart} />}
+      {!overall && <RankingCard store={config.title} label={CHART_LABELS[stores[0]!]} ranking={ranking} chart={chart} status={chartStatus} />}
 
       <Card>
         <CardHeader>

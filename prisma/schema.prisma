@@ -246,7 +246,7 @@ model StoreSync {
   syncedAt DateTime @default(now()) @updatedAt
 }
 
-/// The app's chart position in a store on a day, typed in on the import page (the stores don't offer it in their APIs).
+/// The app's chart position in a store on a day, saved by the daily chart fetch (lib/stores/charts.ts).
 model StoreRanking {
   id        String   @id @default(cuid())
   store     AppStore
@@ -263,7 +263,7 @@ model StoreRanking {
   @@index([store, date])
 }
 
-/// One app in a store's top chart, from a list uploaded on the import page (one list per store per day).
+/// One app in a store's top chart, saved by the daily chart fetch (one list per store per day).
 model StoreChartEntry {
   id        String   @id @default(cuid())
   store     AppStore

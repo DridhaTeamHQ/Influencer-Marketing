@@ -19,7 +19,7 @@ export const isOurApp = (name: string) => /daily\s*-?\s*mattr/i.test(name);
 
 export type ChartList = { date: string; entries: { rank: number; appName: string; developer: string; ours: boolean }[] };
 
-/** The latest top-chart list uploaded for the store, or null. */
+/** The latest top-chart list saved for the store, or null. */
 export async function getLatestChart(store: AppStore): Promise<ChartList | null> {
   const latest = await prisma.storeChartEntry.findFirst({ where: { store }, orderBy: { date: "desc" }, select: { date: true } });
   if (!latest) return null;

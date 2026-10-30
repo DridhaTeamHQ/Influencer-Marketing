@@ -1,19 +1,15 @@
 "use client";
 
-import { useActionState, useRef, useTransition } from "react";
-import { Trash2Icon } from "lucide-react";
+import { useActionState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import {
-  deleteStoreRanking,
   importAppReferrers,
   importPlayUninstalls,
   importReferralCodes,
-  importStoreChart,
   saveAppleDeletions,
   type ImportState,
 } from "@/lib/stores/actions";
@@ -53,72 +49,6 @@ function CsvField({ id, error, description }: { id: string; error?: { message: s
       {description && <FieldDescription>{description}</FieldDescription>}
       <FieldError errors={error} />
     </Field>
-  );
-}
-
-const STORE_ITEMS = [
-  { value: "GOOGLE_PLAY", label: "Play Store" },
-  { value: "APP_STORE", label: "App Store" },
-];
-
-function StoreField() {
-  return (
-    <Field>
-      <FieldLabel>Store</FieldLabel>
-      <Select name="store" items={STORE_ITEMS} defaultValue="GOOGLE_PLAY">
-        <SelectTrigger className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {STORE_ITEMS.map((s) => (
-            <SelectItem key={s.value} value={s.value}>
-              {s.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </Field>
-  );
-}
-
-/** A store's top-chart list for today; our app's place in it becomes today's ranking. */
-export function ChartForm() {
-  const { form, formAction, pending, error } = useImport(importStoreChart, "Chart list saved");
-  return (
-    <form ref={form} action={formAction} className="space-y-4">
-      <FieldGroup className="grid gap-4 sm:grid-cols-[12rem_1fr]">
-        <StoreField />
-        <CsvField
-          id="chart-file"
-          error={error}
-          description="Saved with today’s date. Uploading the same store again today replaces today’s list."
-        />
-      </FieldGroup>
-      <div className="flex justify-end">
-        <SubmitButton pending={pending}>Upload list</SubmitButton>
-      </div>
-    </form>
-  );
-}
-
-export function DeleteRankingButton({ id, label }: { id: string; label: string }) {
-  const [pending, start] = useTransition();
-  return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      aria-label={`Delete ${label}`}
-      disabled={pending}
-      onClick={() => {
-        if (!confirm(`Delete ${label}?`)) return;
-        start(async () => {
-          await deleteStoreRanking(id);
-          toast.add({ title: "Ranking deleted", type: "success" });
-        });
-      }}
-    >
-      {pending ? <Spinner /> : <Trash2Icon />}
-    </Button>
   );
 }
 
