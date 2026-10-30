@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import type { AppStore, StoreStatSplit } from "@/lib/generated/prisma/enums";
 import { rangeDays, type StoreRange } from "@/lib/stores/range";
-import { APPLE_MANUAL_REPORT, countryName, daysAgo, dbDate, isoDay } from "@/lib/stores/shared";
+import { APPLE_MANUAL_REPORT, APPLE_REFERRER_REPORTS, countryName, daysAgo, dbDate, isoDay } from "@/lib/stores/shared";
+import { cleanReferrerName } from "@/lib/stores/store-import";
 
 /**
  * Store page numbers, read from the StoreStat table the syncs fill. Each store's reports cover
@@ -142,7 +143,12 @@ export type StoreReport = {
 };
 
 async function dataSpan(store: AppStore) {
-  const { _min, _max } = await prisma.storeStat.aggregate({ where: { store }, _min: { date: true }, _max: { date: true } });
+  // Monthly rows are dated the 1st, which would pull the start back to a day with no data.
+  const { _min, _max } = await prisma.storeStat.aggregate({
+    where: { store, report: { not: APPLE_REFERRER_REPORTS.MONTHLY } },
+    _min: { date: true },
+    _max: { date: true },
+  });
   return { dataFrom: _min.date ? isoDay(_min.date) : null, dataTo: _max.date ? isoDay(_max.date) : null };
 }
 
@@ -269,6 +275,105 @@ async function googlePlayReport(range: StoreRange): Promise<StoreReport> {
   };
 }
 
+/** Bundle ids Apple reports for referring apps, with the names App Store Connect shows. */
+const APP_NAMES: Record<string, string> = {
+  "net.whatsapp.WhatsApp": "WhatsApp Messenger",
+  "net.whatsapp.WhatsAppSMB": "WhatsApp Business",
+  "com.google.chrome.ios": "Google Chrome",
+  "com.google.GoogleMobile": "Google",
+  "com.google.Gmail": "Gmail",
+  "com.google.ios.youtube": "YouTube",
+  "com.burbn.instagram": "Instagram",
+  "com.linkedin.LinkedIn": "LinkedIn: Community & Network",
+  "com.facebook.Facebook": "Facebook",
+  "com.facebook.Messenger": "Messenger",
+  "ph.telegra.Telegraph": "Telegram Messenger",
+  "com.atebits.Tweetie2": "X",
+  "com.toyopagroup.picaboo": "Snapchat",
+  "com.apple.mobilesafari": "Safari",
+  "com.apple.MobileSMS": "Messages",
+  "com.apple.mobilemail": "Mail",
+  "org.whispersystems.signal": "Signal",
+  "com.reddit.Reddit": "Reddit",
+};
+
+/** "WhatsApp Messenger" for a known app, else the bundle id; websites keep their domain. */
+const referrerName = (channel: string, info: string) =>
+  info ? (APP_NAMES[info] ?? cleanReferrerName(info)) : channel || "Unavailable";
+
+const monthOf = (day: string) => `${day.slice(0, 7)}-01`;
+const monthEnd = (month: string) => {
+  const d = new Date(`${month}T00:00:00Z`);
+  return isoDay(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)));
+};
+
+/**
+ * Downloads + re-downloads by referring app and website. Apple's privacy rules drop small numbers
+ * from each file, much less from monthly ones, so whole months inside the range use the monthly
+ * file and the days around them use the daily files. Days covered by an uploaded App Store Connect
+ * CSV take their app numbers from it instead (websites and App Store search still come from Apple's report).
+ */
+async function appleReferrers(range: StoreRange) {
+  const store = "APP_STORE" as const;
+  const [daily, monthly, csv] = await Promise.all(
+    [APPLE_REFERRER_REPORTS.DAILY, APPLE_REFERRER_REPORTS.MONTHLY, APPLE_REFERRER_REPORTS.CSV].map((report) =>
+      prisma.storeStat.findMany({
+        where: { store, report, split: "SOURCE", date: { gte: dbDate(monthOf(range.from)), lte: dbDate(range.to) } },
+        select: { date: true, channel: true, utmSource: true, downloads: true, reinstalls: true },
+      }),
+    ),
+  );
+  const inRange = (day: string) => day >= range.from && day <= range.to;
+  const csvRows = csv.filter((r) => inRange(isoDay(r.date)));
+  const csvDays = new Set(csvRows.map((r) => isoDay(r.date)));
+  const csvMonths = new Set([...csvDays].map(monthOf));
+  // A monthly file can't be split by day, so months with uploaded days use the daily files around them.
+  const fullMonths = new Set(
+    monthly
+      .map((r) => isoDay(r.date))
+      .filter((m) => m >= range.from && monthEnd(m) <= range.to && !csvMonths.has(m)),
+  );
+  const fromApple = [
+    ...monthly.filter((r) => fullMonths.has(isoDay(r.date))),
+    ...daily.filter((r) => {
+      const day = isoDay(r.date);
+      return inRange(day) && !fullMonths.has(monthOf(day));
+    }),
+  ];
+  const rows = [
+    ...csvRows,
+    ...fromApple.filter((r) => !(r.channel === "App referrer" && csvDays.has(isoDay(r.date)))),
+  ];
+
+  const merged = new Map<string, BreakdownRow>();
+  const apps = new Set<string>();
+  for (const r of rows) {
+    const label = referrerName(r.channel, r.utmSource);
+    const row = merged.get(label) ?? { label, ...zero() };
+    row.downloads += r.downloads;
+    row.reinstalls += r.reinstalls;
+    merged.set(label, row);
+    if (r.channel === "App referrer") apps.add(label);
+  }
+  const all = [...merged.values()]
+    .filter((r) => r.downloads + r.reinstalls > 0)
+    .sort((a, b) => b.downloads + b.reinstalls - (a.downloads + a.reinstalls));
+  const csvSpan = csvDays.size ? { from: [...csvDays].sort()[0]!, to: [...csvDays].sort().at(-1)! } : null;
+  return { apps: all.filter((r) => apps.has(r.label)), all, hasData: rows.length > 0, csvSpan };
+}
+
+/** Says where the referrer numbers for the range came from. */
+function referrerNote(csvSpan: { from: string; to: string } | null) {
+  const api =
+    "Apple’s App Downloads report (synced automatically) leaves out small numbers for privacy, so apps with only a few downloads can be missing; whole months use its monthly file, which leaves out less.";
+  return csvSpan
+    ? `Apps for ${csvSpan.from} to ${csvSpan.to} come from your uploaded App Store Connect CSV and match it. Other days: ${api}`
+    : `${api} Upload App Store Connect’s “By App Referrer” CSV to get every app.`;
+}
+
+/** Referrer numbers only cover installs: downloads and re-downloads. */
+const REFERRER_METRICS: Metric[] = ["downloads", "reinstalls"];
+
 async function appStoreReport(range: StoreRange): Promise<StoreReport> {
   const store = "APP_STORE" as const;
   const current = { from: range.from, to: range.to };
@@ -303,6 +408,7 @@ async function appStoreReport(range: StoreRange): Promise<StoreReport> {
     salesCountries,
     analyticsCountries,
     span,
+    referrers,
   ] =
     await Promise.all([
       perDay(store, sales, current),
@@ -317,6 +423,7 @@ async function appStoreReport(range: StoreRange): Promise<StoreReport> {
       breakdown(store, sales, current, "country", (c) => countryName(c) || "Unknown"),
       breakdown(store, analyticsByCountry, current, "country", (c) => countryName(c) || "Unknown"),
       dataSpan(store),
+      appleReferrers(range),
     ]);
 
   /** One day's numbers: installs from Sales, deletions and devices from Analytics (or typed in, past Apple's last day). */
@@ -396,7 +503,11 @@ async function appStoreReport(range: StoreRange): Promise<StoreReport> {
     // Sales reports match App Store Connect; the Analytics report drops small numbers and lags.
     accuracy: { downloads: "exact", reinstalls: "exact", uninstalls: "partial", uniqueUsers: "partial", active: "estimate" },
     breakdowns: [
-      { key: "utmSource", title: "Source (website / app)", rows: sources },
+      { key: "appReferrer", title: "App referrer", rows: referrers.apps, metrics: REFERRER_METRICS, note: referrerNote(referrers.csvSpan) },
+      // The Analytics report never names the referrer, so the referrer report fills this in once it exists.
+      referrers.hasData
+        ? { key: "utmSource", title: "Source (website / app)", rows: referrers.all, metrics: REFERRER_METRICS, note: referrerNote(referrers.csvSpan) }
+        : { key: "utmSource", title: "Source (website / app)", rows: sources },
       { key: "utmCampaign", title: "Campaign", rows: campaigns },
       { key: "channel", title: "Source type", rows: channels },
       {

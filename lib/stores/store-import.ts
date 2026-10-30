@@ -54,10 +54,11 @@ const toNumber = (cell: string) => {
 
 const TOTAL_COLUMN = /^(all|total)\b|users lost|uninstall|lost/i;
 
-export function parseDailyCountCsv(text: string): ParsedImport {
+/** The file's lines as cells, comma- or tab-separated. */
+function readRows(text: string) {
   const lines = text.replace(/^﻿/, "").split(/\r?\n/).filter((l) => l.trim());
   const delimiter = lines.some((l) => l.includes("\t")) && !lines.some((l) => l.includes(",")) ? "\t" : ",";
-  const rows = lines.map((l) => {
+  return lines.map((l) => {
     const cells = splitRow(l, delimiter);
     // An unquoted "Oct 5, 2026" splits at its comma: put the date back together.
     if (/^[A-Za-z]{3,9}\.? \d{1,2}$/.test(cells[0] ?? "") && /^\d{4}$/.test(cells[1] ?? "")) {
@@ -65,6 +66,10 @@ export function parseDailyCountCsv(text: string): ParsedImport {
     }
     return cells;
   });
+}
+
+export function parseDailyCountCsv(text: string): ParsedImport {
+  const rows = readRows(text);
 
   // The table starts at the first row whose first cell says "Date".
   // Title lines like "Start Date,7/22/26" aren't the header.
@@ -95,6 +100,66 @@ export function parseDailyCountCsv(text: string): ParsedImport {
     days: [...byDay].map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date)),
     columns: used.map(({ name }) => name || "(unnamed)"),
   };
+}
+
+export type ParsedReferrers = { rows: { date: string; referrer: string; count: number }[]; referrers: string[] };
+
+const REFERRER_COLUMN = /referr?er|source/i;
+
+/** App Store Connect names its export columns "WhatsApp Messenger Total Downloads": keep the app name. */
+export const cleanReferrerName = (name: string) => name.replace(/\s*[-–:]?\s*(total\s+)?downloads?\s*$/i, "").trim() || name;
+
+/**
+ * Reads App Store Connect's Analytics export of Total Downloads "By App Referrer" (daily). Accepts
+ * a Date column with one column per app (how App Store Connect exports it), or one row per day and
+ * app with Date, App Referrer and a number column. Every day × app is returned, zeros included,
+ * so the file says which days it covers.
+ */
+export function parseAppReferrerCsv(text: string): ParsedReferrers {
+  const rows = readRows(text);
+  const headerIndex = rows.findIndex((r) => r.some((c) => /^(date|day)/i.test(c)));
+  if (headerIndex < 0) {
+    throw new Error("Couldn’t find a “Date” column. In App Store Connect pick Days, then export the chart as CSV.");
+  }
+  const header = rows[headerIndex]!;
+  const dateCol = header.findIndex((c) => /^(date|day)/i.test(c));
+  const body = rows.slice(headerIndex + 1).filter((r) => parseDay(r[dateCol] ?? "") !== null);
+  if (body.length === 0) throw new Error("No dated rows found in the file.");
+
+  const out: ParsedReferrers["rows"] = [];
+  const referrerCol = header.findIndex((c, i) => i !== dateCol && REFERRER_COLUMN.test(c));
+  const numberCol = (r: string[]) => (i: number) => i !== dateCol && i !== referrerCol && toNumber(r[i] ?? "") !== null;
+
+  if (referrerCol >= 0) {
+    // One row per day and app: the count is the first number column after the names.
+    const countCol = header.findIndex((_, i) => body.every((r) => numberCol(r)(i)));
+    if (countCol < 0) throw new Error("No downloads column found next to the app names.");
+    for (const r of body) {
+      const referrer = cleanReferrerName(r[referrerCol]?.trim() ?? "");
+      if (referrer) out.push({ date: parseDay(r[dateCol]!)!, referrer, count: Math.round(toNumber(r[countCol] ?? "") ?? 0) });
+    }
+  } else {
+    // One column per app; a total column, if any, is left out.
+    const apps = header
+      .map((name, i) => ({ name: cleanReferrerName(name.trim()), i }))
+      .filter(({ name, i }) => i !== dateCol && name && !/^(all|total)\b/i.test(name) && body.every((r) => numberCol(r)(i)));
+    if (apps.length === 0) throw new Error("No app columns found next to the dates. Export the chart “By App Referrer”.");
+    for (const r of body) {
+      for (const { name, i } of apps) out.push({ date: parseDay(r[dateCol]!)!, referrer: name, count: Math.round(toNumber(r[i] ?? "") ?? 0) });
+    }
+  }
+
+  // The same day and app twice (e.g. repeated rows) are added up.
+  const merged = new Map<string, ParsedReferrers["rows"][number]>();
+  for (const row of out) {
+    const key = `${row.date}\u0000${row.referrer}`;
+    const existing = merged.get(key);
+    if (existing) existing.count += row.count;
+    else merged.set(key, { ...row });
+  }
+  const result = [...merged.values()].sort((a, b) => a.date.localeCompare(b.date));
+  if (!result.some((r) => r.count > 0)) throw new Error("Every number in the file is 0.");
+  return { rows: result, referrers: [...new Set(result.map((r) => r.referrer))] };
 }
 
 export type ParsedReferralCodes = { total: number; codes: number; used: number };

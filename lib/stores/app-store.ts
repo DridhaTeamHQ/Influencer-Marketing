@@ -3,6 +3,7 @@ import { gunzipSync } from "node:zlib";
 import { prisma } from "@/lib/prisma";
 import {
   APPLE_MANUAL_REPORT,
+  APPLE_REFERRER_REPORTS,
   b64url,
   daysAgo,
   dbDate,
@@ -192,28 +193,56 @@ function reportDay(value: string | undefined) {
 }
 
 async function analyticsRows(instanceId: string) {
-  const segments = await allPages<{ attributes: { url: string } }>(`/v1/analyticsReportInstances/${instanceId}/segments`);
   const rows: StatRow[] = [];
+  for (const row of await instanceRows(instanceId)) {
+    const numbers = analyticsNumbers(row);
+    const date = reportDay(row["Date"]);
+    if (!numbers || !date) continue;
+    rows.push(
+      {
+        split: "SOURCE",
+        date,
+        channel: row["Source Type"] ?? "",
+        utmSource: row["Source Info"] ?? "",
+        utmCampaign: row["Campaign"] ?? "",
+        ...numbers,
+      },
+      { split: "COUNTRY", date, country: row["Territory"] ?? "", ...numbers },
+    );
+  }
+  return rows;
+}
+
+/** Rows of every segment of one report instance (gzipped TSV files), for this app only. */
+async function instanceRows(instanceId: string) {
+  const segments = await allPages<{ attributes: { url: string } }>(`/v1/analyticsReportInstances/${instanceId}/segments`);
+  const rows: Record<string, string>[] = [];
   for (const segment of segments) {
     const res = await fetch(segment.attributes.url, { cache: "no-store" });
     if (!res.ok) throw new Error(`Analytics report download failed (${res.status})`);
     for (const row of parseTsv(gunzipSync(Buffer.from(await res.arrayBuffer())).toString("utf8"))) {
-      if (row["App Apple Identifier"] && row["App Apple Identifier"] !== appId()) continue;
-      const numbers = analyticsNumbers(row);
-      const date = reportDay(row["Date"]);
-      if (!numbers || !date) continue;
-      rows.push(
-        {
-          split: "SOURCE",
-          date,
-          channel: row["Source Type"] ?? "",
-          utmSource: row["Source Info"] ?? "",
-          utmCampaign: row["Campaign"] ?? "",
-          ...numbers,
-        },
-        { split: "COUNTRY", date, country: row["Territory"] ?? "", ...numbers },
-      );
+      if (!row["App Apple Identifier"] || row["App Apple Identifier"] === appId()) rows.push(row);
     }
+  }
+  return rows;
+}
+
+/** Downloads by the referring app (its bundle id) or website, as App Store Connect's "By App Referrer" shows them. */
+async function referrerRows(instanceId: string) {
+  const rows: StatRow[] = [];
+  for (const row of await instanceRows(instanceId)) {
+    const date = reportDay(row["Date"]);
+    const counts = Number(row["Counts"]) || 0;
+    if (!date || !counts) continue;
+    const redownload = /redownload|restore/i.test(row["Download Type"] ?? "");
+    rows.push({
+      split: "SOURCE",
+      date,
+      channel: row["Source Type"] ?? "",
+      utmSource: row["Source Info"] ?? "",
+      utmCampaign: row["Campaign"] ?? "",
+      ...(redownload ? { reinstalls: counts } : { downloads: counts }),
+    });
   }
   return rows;
 }
@@ -224,12 +253,62 @@ async function analyticsRows(instanceId: string) {
  */
 const ACCESS_TYPES = ["ONE_TIME_SNAPSHOT", "ONGOING"] as const;
 
+type ReportRequest = { id: string; attributes: { accessType: string; stoppedDueToInactivity?: boolean } };
+
+const uniqueById = <T extends { id: string }>(items: T[]) => [...new Map(items.map((i) => [i.id, i])).values()];
+
+/**
+ * Records that a report file was copied. An upsert, because two syncs can overlap (the stores page
+ * starts one in the background) and both copy the same new file.
+ */
+const markCopied = (key: string) => prisma.storeSync.upsert({ where: { key }, create: { key }, update: {} });
+
+/**
+ * The referrer report, daily and monthly. Apple drops small numbers for privacy per row, so its
+ * monthly files lose much less than the daily ones; the stores page uses them for whole months.
+ */
+const REFERRER_REPORT = "App Downloads Detailed";
+
+/** Copies every daily and monthly instance of the referrer report we haven't copied yet. */
+async function syncReferrers(active: ReportRequest[]) {
+  let copied = 0;
+  for (const granularity of ["DAILY", "MONTHLY"] as const) {
+    const report = APPLE_REFERRER_REPORTS[granularity];
+    // Snapshot first, so the ongoing request's newer files win for days both cover.
+    const instances: { id: string }[] = [];
+    for (const request of active) {
+      const reports = await allPages<{ id: string; attributes: { name: string } }>(
+        `/v1/analyticsReportRequests/${request.id}/reports?filter[category]=COMMERCE`,
+      );
+      const found = reports.find((r) => r.attributes.name === REFERRER_REPORT);
+      if (!found) continue;
+      instances.push(
+        ...(await allPages<{ id: string }>(`/v1/analyticsReports/${found.id}/instances?filter[granularity]=${granularity}&limit=200`)),
+      );
+    }
+    const key = (id: string) => `${STORE}:referrer:${id}`;
+    const done = new Set(
+      (await prisma.storeSync.findMany({ where: { key: { in: instances.map((i) => key(i.id)) } } })).map((s) => s.key),
+    );
+    for (const instance of uniqueById(instances).filter((i) => !done.has(key(i.id)))) {
+      const rows = await referrerRows(instance.id);
+      const dates = [...new Set(rows.map((r) => r.date))].map(dbDate);
+      await prisma.$transaction([
+        prisma.storeStat.deleteMany({ where: { store: STORE, report, date: { in: dates } } }),
+        prisma.storeStat.createMany({ data: mergeRows(STORE, report, rows), skipDuplicates: true }),
+      ]);
+      await markCopied(key(instance.id));
+      copied++;
+    }
+  }
+  return copied;
+}
+
 /** Makes sure Apple produces Analytics reports, then copies every daily instance we haven't copied yet. */
 async function syncAnalytics() {
-  type Request = { id: string; attributes: { accessType: string; stoppedDueToInactivity?: boolean } };
-  const requests = await allPages<Request>(`/v1/apps/${appId()}/analyticsReportRequests`);
+  const requests = await allPages<ReportRequest>(`/v1/apps/${appId()}/analyticsReportRequests`);
 
-  const active: Request[] = [];
+  const active: ReportRequest[] = [];
   for (const accessType of ACCESS_TYPES) {
     const request = requests.find((r) => r.attributes.accessType === accessType && !r.attributes.stoppedDueToInactivity);
     if (request) active.push(request);
@@ -263,23 +342,23 @@ async function syncAnalytics() {
   const done = new Set(
     (await prisma.storeSync.findMany({ where: { key: { in: instances.map((i) => key(i.id)) } } })).map((s) => s.key),
   );
-  const todo = instances.filter((i) => !done.has(key(i.id)));
+  const todo = uniqueById(instances).filter((i) => !done.has(key(i.id)));
 
   for (const instance of todo) {
     const rows = await analyticsRows(instance.id);
     const dates = [...new Set(rows.map((r) => r.date))].map(dbDate);
     await prisma.$transaction([
       prisma.storeStat.deleteMany({ where: { store: STORE, report: "apple_analytics", date: { in: dates } } }),
-      prisma.storeStat.createMany({ data: mergeRows(STORE, "apple_analytics", rows) }),
+      prisma.storeStat.createMany({ data: mergeRows(STORE, "apple_analytics", rows), skipDuplicates: true }),
     ]);
-    await prisma.storeSync.create({ data: { key: key(instance.id) } });
+    await markCopied(key(instance.id));
   }
   if (todo.length) {
     // Apple's own numbers now cover these days: drop deletions typed in for them.
     const last = await prisma.storeStat.findFirst({ where: { store: STORE, report: "apple_analytics" }, orderBy: { date: "desc" } });
     if (last) await prisma.storeStat.deleteMany({ where: { store: STORE, report: APPLE_MANUAL_REPORT, date: { lte: last.date } } });
   }
-  return todo.length;
+  return todo.length + (await syncReferrers(active));
 }
 
 /** Copies new Sales and Analytics reports. Throws on failure. */

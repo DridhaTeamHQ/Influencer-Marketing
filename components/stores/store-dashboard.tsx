@@ -11,10 +11,13 @@ import {
 } from "lucide-react";
 import { StatCard } from "@/components/analytics/stat-card";
 import { PageHeader } from "@/components/page-header";
+import { ImportReferrersDialog } from "@/components/stores/import-referrers-dialog";
 import { ImportUninstallsDialog } from "@/components/stores/import-uninstalls-dialog";
 import { AppleDeletionsDialog } from "@/components/stores/apple-deletions-dialog";
 import { ReferralUploadDialog } from "@/components/stores/referral-dialog";
 import { AccuracyInfo, NotesInfo } from "@/components/stores/accuracy-badge";
+import { BreakdownChart } from "@/components/stores/breakdown-chart";
+import { DailyTrendChart } from "@/components/stores/daily-trend-chart";
 import { StoreChart, type ChartStore } from "@/components/stores/store-chart";
 import { StoreRangeFilter } from "@/components/stores/store-range-filter";
 import { SyncButton } from "@/components/stores/sync-button";
@@ -31,7 +34,6 @@ import type { AppStore } from "@/lib/generated/prisma/enums";
 import { routes } from "@/lib/routes";
 import { parseStoreRange, type StoreRange } from "@/lib/stores/range";
 import {
-  BREAKDOWN_METRICS,
   combineStoreReports,
   REFERRAL_USAGE_OFFSET,
   worst,
@@ -40,7 +42,6 @@ import {
   getStoreReport,
   type Breakdown,
   type ReferralPoint,
-  type Metric,
   type StoreReport,
 } from "@/lib/stores/stats";
 import { getSyncStatus, missingEnvFor, runSync } from "@/lib/stores/sync";
@@ -359,7 +360,7 @@ export async function StoreDashboard({
       </Card>
 
       {/* Keyed so the tabs start over on the new view's first tab. */}
-      <BreakdownCard key={view} report={report} uniqueLabel={config.uniqueLabel} uninstallLabel={config.uninstallLabel} />
+      <BreakdownCard key={view} report={report} />
 
       <DailyTable
         report={report}
@@ -436,15 +437,7 @@ function MetricCard({
   );
 }
 
-function BreakdownCard({
-  report,
-  uniqueLabel,
-  uninstallLabel,
-}: {
-  report: StoreReport;
-  uniqueLabel: string;
-  uninstallLabel: string;
-}) {
+function BreakdownCard({ report }: { report: StoreReport }) {
   const { has } = report;
   return (
     <Card className="pb-0">
@@ -452,6 +445,11 @@ function BreakdownCard({
         <CardHeader>
           <CardTitle>Where installs came from</CardTitle>
           <CardDescription>Totals for the selected dates</CardDescription>
+          {report.breakdowns.some((b) => b.key === "appReferrer") && (
+            <CardAction>
+              <ImportReferrersDialog />
+            </CardAction>
+          )}
         </CardHeader>
         <div className="overflow-x-auto px-6 pt-4 pb-4">
           <TabsList>
@@ -470,7 +468,7 @@ function BreakdownCard({
                 {b.key !== "country" && !has.utm ? "Not available yet" : "No data for these dates"}
               </p>
             ) : (
-              <BreakdownTable breakdown={b} report={report} uniqueLabel={uniqueLabel} uninstallLabel={uninstallLabel} />
+              <BreakdownBars breakdown={b} />
             )}
           </TabsContent>
         ))}
@@ -479,52 +477,10 @@ function BreakdownCard({
   );
 }
 
-function BreakdownTable({
-  breakdown,
-  report,
-  uniqueLabel,
-  uninstallLabel,
-}: {
-  breakdown: Breakdown;
-  report: StoreReport;
-  uniqueLabel: string;
-  uninstallLabel: string;
-}) {
-  const { title, rows } = breakdown;
-  // A column shows only when this breakdown's report has it and the store reports it at all.
-  const show = (m: Metric) => (breakdown.metrics ?? BREAKDOWN_METRICS).includes(m) && report.has[m];
-  const has = { reinstalls: show("reinstalls"), uninstalls: show("uninstalls"), uniqueUsers: show("uniqueUsers") };
-  const total = rows.reduce((s, r) => s + r.downloads + r.reinstalls, 0);
+function BreakdownBars({ breakdown }: { breakdown: Breakdown }) {
   return (
-    <div className="max-h-96 overflow-y-auto border-t">
-      <Table>
-        <TableHeader className="sticky top-0 bg-card">
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="pl-6">{title}</TableHead>
-            <TableHead className="text-right">{breakdown.downloadsLabel ?? "Downloads"}</TableHead>
-            {has.reinstalls && <TableHead className="text-right">Reinstalls</TableHead>}
-            {has.uninstalls && <TableHead className="text-right">{uninstallLabel}</TableHead>}
-            {has.uniqueUsers && <TableHead className="text-right">{uniqueLabel}</TableHead>}
-            <TableHead className="pr-6 text-right">Share</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((r) => (
-            <TableRow key={r.label}>
-              <TableCell className="max-w-72 truncate pl-6" title={r.label}>
-                {r.label}
-              </TableCell>
-              <TableCell className="text-right tabular-nums">{formatNumber(r.downloads)}</TableCell>
-              {has.reinstalls && <TableCell className="text-right tabular-nums">{formatNumber(r.reinstalls)}</TableCell>}
-              {has.uninstalls && <TableCell className="text-right tabular-nums">{formatNumber(r.uninstalls)}</TableCell>}
-              {has.uniqueUsers && <TableCell className="text-right tabular-nums">{formatNumber(r.uniqueUsers)}</TableCell>}
-              <TableCell className="pr-6 text-right tabular-nums text-muted-foreground">
-                {total ? `${Math.round(((r.downloads + r.reinstalls) / total) * 100)}%` : "—"}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+    <div className="max-h-[28rem] overflow-y-auto px-6 pb-6">
+      <BreakdownChart rows={breakdown.rows} />
     </div>
   );
 }
@@ -555,6 +511,13 @@ function DailyTable({
           <Badge variant="secondary">{range.days} days</Badge>
         </CardAction>
       </CardHeader>
+      <CardContent className="pb-4">
+        <DailyTrendChart
+          data={report.daily}
+          uninstallLabel={uninstallLabel}
+          showUninstalls={has.uninstalls}
+        />
+      </CardContent>
       <div className="max-h-[32rem] overflow-y-auto border-t">
         <Table>
           <TableHeader className="sticky top-0 bg-card">

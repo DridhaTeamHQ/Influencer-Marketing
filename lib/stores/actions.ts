@@ -6,9 +6,9 @@ import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE, isValidSessionToken } from "@/lib/auth";
 import type { AppStore } from "@/lib/generated/prisma/enums";
 import { routes } from "@/lib/routes";
-import { APPLE_MANUAL_REPORT, dbDate, errorMessage } from "@/lib/stores/shared";
+import { APPLE_MANUAL_REPORT, APPLE_REFERRER_REPORTS, dbDate, errorMessage } from "@/lib/stores/shared";
 import { PLAY_IMPORT_REPORT, getAppleDeletionGap } from "@/lib/stores/stats";
-import { decodeCsv, parseDailyCountCsv, parseReferralCodesCsv } from "@/lib/stores/store-import";
+import { decodeCsv, parseAppReferrerCsv, parseDailyCountCsv, parseReferralCodesCsv } from "@/lib/stores/store-import";
 import { runSync } from "@/lib/stores/sync";
 
 async function requireAdmin() {
@@ -60,6 +60,47 @@ export async function importPlayUninstalls(_prev: ImportState, formData: FormDat
     return {
       ok: true,
       message: `Imported ${total.toLocaleString("en")} uninstalls over ${days.length} days (${days[0]!.date} to ${days.at(-1)!.date}) from ${columns.length === 1 ? `“${columns[0]}”` : `${columns.length} columns`}.`,
+    };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error) };
+  }
+}
+
+/**
+ * Imports App Store Connect's Total Downloads "By App Referrer" export. For the days in the file it
+ * replaces the app referrer numbers from Apple's report, which leave out small numbers. Uploading
+ * the same days again replaces them; other days are kept.
+ */
+export async function importAppReferrers(_prev: ImportState, formData: FormData): Promise<ImportState> {
+  await requireAdmin();
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { ok: false, message: "Choose the CSV file to import." };
+  if (file.size > MAX_BYTES) return { ok: false, message: "That file is too big for an App Referrer export (max 2 MB)." };
+
+  try {
+    const { rows, referrers } = parseAppReferrerCsv(decodeCsv(new Uint8Array(await file.arrayBuffer())));
+    const days = [...new Set(rows.map((r) => r.date))];
+    await prisma.$transaction([
+      prisma.storeStat.deleteMany({
+        where: { store: "APP_STORE", report: APPLE_REFERRER_REPORTS.CSV, date: { in: days.map(dbDate) } },
+      }),
+      prisma.storeStat.createMany({
+        data: rows.map((r) => ({
+          store: "APP_STORE" as const,
+          report: APPLE_REFERRER_REPORTS.CSV,
+          split: "SOURCE" as const,
+          date: dbDate(r.date),
+          channel: "App referrer",
+          utmSource: r.referrer,
+          downloads: r.count,
+        })),
+      }),
+    ]);
+    revalidatePath(routes.stores);
+    const total = rows.reduce((s, r) => s + r.count, 0);
+    return {
+      ok: true,
+      message: `Imported ${total.toLocaleString("en")} downloads from ${referrers.length} app${referrers.length === 1 ? "" : "s"} over ${days.length} days (${days[0]} to ${days.at(-1)}).`,
     };
   } catch (error) {
     return { ok: false, message: errorMessage(error) };

@@ -60,6 +60,17 @@ export function errorMessage(error: unknown) {
  */
 export const APPLE_MANUAL_REPORT = "apple_manual_deletions";
 
+/**
+ * Downloads by referring app / website: from Apple's "App Downloads Detailed" report (monthly rows are
+ * dated the 1st), and from App Store Connect CSVs uploaded on the stores page, which hold the small
+ * numbers the report leaves out.
+ */
+export const APPLE_REFERRER_REPORTS = {
+  DAILY: "apple_referrer",
+  MONTHLY: "apple_referrer_monthly",
+  CSV: "apple_referrer_csv",
+} as const;
+
 /** One row headed for the StoreStat table. */
 export type StatRow = {
   split: StoreStatSplit;
