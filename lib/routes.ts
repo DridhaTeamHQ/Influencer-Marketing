@@ -13,6 +13,8 @@ export const routes = {
   instagram: `${ADMIN_BASE}/social/instagram`,
   facebook: `${ADMIN_BASE}/social/facebook`,
   youtube: `${ADMIN_BASE}/social/youtube`,
+  /** Dashboard logins and their roles. */
+  users: `${ADMIN_BASE}/users`,
   login: `${ADMIN_BASE}/login`,
 };
 

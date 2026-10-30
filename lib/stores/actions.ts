@@ -1,24 +1,22 @@
 "use server";
 
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { SESSION_COOKIE, isValidSessionToken } from "@/lib/auth";
 import type { AppStore } from "@/lib/generated/prisma/enums";
 import { routes } from "@/lib/routes";
+import { requireSection } from "@/lib/session";
 import { APPLE_DELETIONS_TOTAL_REPORT, APPLE_REFERRER_REPORTS, dbDate, errorMessage } from "@/lib/stores/shared";
 import { PLAY_IMPORT_REPORT, deletionsLeftOut } from "@/lib/stores/stats";
 import { decodeCsv, parseAppReferrerCsv, parseDailyCountCsv, parseReferralCodesCsv } from "@/lib/stores/store-import";
 import { runSync } from "@/lib/stores/sync";
 
-async function requireAdmin() {
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!isValidSessionToken(token)) throw new Error("Not signed in");
-}
+/** Every action below belongs to the App Stores section. */
+const requireStoreAccess = () => requireSection("stores");
 
 /** "Sync now" on the stores page: copies new reports, then refreshes the page. */
 export async function syncStoreNow(stores: AppStore[], path: string) {
-  await requireAdmin();
+  await requireStoreAccess();
   const valid = stores.filter((s) => s === "GOOGLE_PLAY" || s === "APP_STORE");
   const oidcToken = (await headers()).get("x-vercel-oidc-token");
   await Promise.all(valid.map((s) => runSync(s, oidcToken)));
@@ -34,7 +32,7 @@ const MAX_BYTES = 2 * 1024 * 1024;
  * earlier imports for those days; other days are kept.
  */
 export async function importPlayUninstalls(_prev: ImportState, formData: FormData): Promise<ImportState> {
-  await requireAdmin();
+  await requireStoreAccess();
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, message: "Choose the CSV file to import." };
   if (file.size > MAX_BYTES) return { ok: false, message: "That file is too big for a Users lost export (max 2 MB)." };
@@ -72,7 +70,7 @@ export async function importPlayUninstalls(_prev: ImportState, formData: FormDat
  * the same days again replaces them; other days are kept.
  */
 export async function importAppReferrers(_prev: ImportState, formData: FormData): Promise<ImportState> {
-  await requireAdmin();
+  await requireStoreAccess();
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, message: "Choose the CSV file to import." };
   if (file.size > MAX_BYTES) return { ok: false, message: "That file is too big for an App Referrer export (max 2 MB)." };
@@ -112,7 +110,7 @@ export async function importAppReferrers(_prev: ImportState, formData: FormData)
  * chosen day (uploading the same day again replaces it). The file itself isn't kept.
  */
 export async function importReferralCodes(_prev: ImportState, formData: FormData): Promise<ImportState> {
-  await requireAdmin();
+  await requireStoreAccess();
   const file = formData.get("file");
   const day = String(formData.get("date") ?? "");
   if (!(file instanceof File) || file.size === 0) return { ok: false, message: "Choose the referral codes CSV." };
@@ -140,7 +138,7 @@ export async function importReferralCodes(_prev: ImportState, formData: FormData
  * entered before; an empty total clears it.
  */
 export async function saveAppleDeletions(_prev: ImportState, formData: FormData): Promise<ImportState> {
-  await requireAdmin();
+  await requireStoreAccess();
   const text = String(formData.get("total") ?? "").trim();
   const day = String(formData.get("date") ?? "");
   const total = text === "" ? null : Number(text);

@@ -16,19 +16,18 @@ import {
 } from "@/components/ui/navigation-menu";
 import { cn } from "@/lib/utils";
 import { routes } from "@/lib/routes";
+import { ROLE_LABELS, homeFor, sectionsFor, type Role } from "@/lib/roles";
 
-const items = [
-  { href: routes.dashboard, label: "Dashboard" },
-  { href: routes.influencers, label: "Influencers" },
-  { href: routes.stores, label: "App Stores" },
-  { href: routes.social, label: "Social" },
-];
+type NavUser = { name: string; email: string; role: Role };
+type NavItem = { href: string; label: string };
 
-export function SiteNav() {
+/** `user` is null while the login streams in: the bar shows without tabs. */
+export function SiteNav({ user }: { user: NavUser | null }) {
+  const items = user ? sectionsFor(user.role) : [];
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/70 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:px-6">
-        <Link href={routes.dashboard} className="flex items-center gap-2 font-semibold tracking-tight">
+        <Link href={user ? homeFor(user.role) : routes.dashboard} className="flex items-center gap-2 font-semibold tracking-tight">
           <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <LinkIcon className="size-3.5" />
           </span>
@@ -36,11 +35,17 @@ export function SiteNav() {
         </Link>
 
         {/* The pathname is only known at request time, so the active state streams in. */}
-        <Suspense fallback={<NavLinks pathname={null} />}>
-          <ActiveNavLinks />
+        <Suspense fallback={<NavLinks items={items} pathname={null} />}>
+          <ActiveNavLinks items={items} />
         </Suspense>
 
         <div className="ml-auto flex items-center gap-1">
+          {user && (
+            <div className="mr-1 hidden min-w-0 text-right leading-tight md:block" title={user.email}>
+              <div className="max-w-40 truncate text-sm font-medium">{user.name}</div>
+              <div className="text-xs text-muted-foreground">{ROLE_LABELS[user.role]}</div>
+            </div>
+          )}
           <ThemeToggle />
           <form action={logout}>
             <Button type="submit" variant="ghost" size="sm" className="text-muted-foreground">
@@ -54,11 +59,11 @@ export function SiteNav() {
   );
 }
 
-function ActiveNavLinks() {
-  return <NavLinks pathname={usePathname()} />;
+function ActiveNavLinks({ items }: { items: NavItem[] }) {
+  return <NavLinks items={items} pathname={usePathname()} />;
 }
 
-function NavLinks({ pathname }: { pathname: string | null }) {
+function NavLinks({ items, pathname }: { items: NavItem[]; pathname: string | null }) {
   return (
     // On narrow screens the tabs scroll sideways instead of pushing the header off-screen.
     <NavigationMenu className="min-w-0 overflow-x-auto [scrollbar-width:none] sm:ml-4">

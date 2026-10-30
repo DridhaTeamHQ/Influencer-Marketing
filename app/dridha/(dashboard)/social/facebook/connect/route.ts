@@ -1,12 +1,12 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, isValidSessionToken } from "@/lib/auth";
+import { requestCanAccess } from "@/lib/auth";
 import { routes } from "@/lib/routes";
 import { OAUTH_STATE_COOKIE, authorizeUrl, facebookMissingEnv } from "@/lib/social/facebook";
 
 /** "Connect Facebook": sends the browser to Facebook's consent page. */
-export function GET(request: NextRequest) {
-  if (!isValidSessionToken(request.cookies.get(SESSION_COOKIE)?.value)) {
+export async function GET(request: NextRequest) {
+  if (!(await requestCanAccess(request, "social"))) {
     return NextResponse.redirect(new URL(routes.login, request.url));
   }
   if (facebookMissingEnv().length) return NextResponse.redirect(new URL(routes.facebook, request.url));

@@ -1,9 +1,8 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { SESSION_COOKIE, isValidSessionToken } from "@/lib/auth";
 import { routes } from "@/lib/routes";
+import { requireSection } from "@/lib/session";
 import { disconnect as disconnectFacebookPage } from "@/lib/social/facebook";
 import { disconnect as disconnectInstagramAccount } from "@/lib/social/instagram";
 import { refreshPlatformTrends } from "@/lib/social/ai-reports";
@@ -13,28 +12,28 @@ import { errorMessage } from "@/lib/stores/shared";
 
 /** "Disconnect" on the YouTube page: forgets the channel and removes our access at Google. */
 export async function disconnectYoutube() {
-  if (!isValidSessionToken((await cookies()).get(SESSION_COOKIE)?.value)) throw new Error("Not signed in");
+  await requireSection("social");
   await disconnect();
   revalidatePath(routes.youtube);
 }
 
 /** "Disconnect" on the Instagram page: forgets the account. */
 export async function disconnectInstagram() {
-  if (!isValidSessionToken((await cookies()).get(SESSION_COOKIE)?.value)) throw new Error("Not signed in");
+  await requireSection("social");
   await disconnectInstagramAccount();
   revalidatePath(routes.instagram);
 }
 
 /** "Disconnect" on the Facebook page: forgets the Page. */
 export async function disconnectFacebook() {
-  if (!isValidSessionToken((await cookies()).get(SESSION_COOKIE)?.value)) throw new Error("Not signed in");
+  await requireSection("social");
   await disconnectFacebookPage();
   revalidatePath(routes.facebook);
 }
 
 /** The refresh button on a platform's "Trending" tile: has the AI look at that platform's videos again now. */
 export async function refreshTrends(platform: PlatformKey) {
-  if (!isValidSessionToken((await cookies()).get(SESSION_COOKIE)?.value)) throw new Error("Not signed in");
+  await requireSection("social");
   if (!(platform in PLATFORMS)) throw new Error("Unknown platform");
   try {
     await refreshPlatformTrends(platform);

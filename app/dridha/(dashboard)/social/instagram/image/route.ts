@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, isValidSessionToken } from "@/lib/auth";
+import { requestCanAccess } from "@/lib/auth";
 
 /** Instagram's image hosts. Nothing else is fetched, so this can't be used to reach other sites. */
 const HOSTS = ["cdninstagram.com", "fbcdn.net"];
@@ -9,7 +9,7 @@ const HOSTS = ["cdninstagram.com", "fbcdn.net"];
  * to show them on other sites.
  */
 export async function GET(request: NextRequest) {
-  if (!isValidSessionToken(request.cookies.get(SESSION_COOKIE)?.value)) return new NextResponse(null, { status: 401 });
+  if (!(await requestCanAccess(request, "social"))) return new NextResponse(null, { status: 401 });
 
   let url: URL;
   try {

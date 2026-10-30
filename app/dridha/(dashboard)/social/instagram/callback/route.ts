@@ -1,12 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, isValidSessionToken } from "@/lib/auth";
+import { requestCanAccess } from "@/lib/auth";
 import { routes } from "@/lib/routes";
 import { OAUTH_STATE_COOKIE, completeSignIn } from "@/lib/social/instagram";
 import { errorMessage } from "@/lib/stores/shared";
 
 /** Instagram sends the browser back here after the consent page. */
 export async function GET(request: NextRequest) {
-  if (!isValidSessionToken(request.cookies.get(SESSION_COOKIE)?.value)) {
+  if (!(await requestCanAccess(request, "social"))) {
     return NextResponse.redirect(new URL(routes.login, request.url));
   }
 

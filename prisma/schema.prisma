@@ -339,3 +339,31 @@ model AiReport {
 
   @@index([kind, createdAt])
 }
+
+/// What a dashboard login can open. See lib/roles.ts for the sections each role gets.
+enum UserRole {
+  /// Everything, including managing other developers.
+  DEVELOPER
+  /// App Stores, and creating or managing every login.
+  ADMIN
+  /// Dashboard, Influencers and Social.
+  CREATOR
+}
+
+/// A dashboard login. The developer login set in the environment (DEVELOPER_EMAIL) is not stored here.
+model User {
+  id             String    @id @default(cuid())
+  name           String
+  /// Stored lowercase.
+  email          String    @unique
+  /// scrypt hash, see lib/password.ts.
+  passwordHash   String
+  role           UserRole  @default(CREATOR)
+  /// Paused users can't sign in, and their open sessions stop working.
+  isActive       Boolean   @default(true)
+  /// Part of every session token; bumped on password reset so other open sessions end.
+  sessionVersion Int       @default(0)
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}

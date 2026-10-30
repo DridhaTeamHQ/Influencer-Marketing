@@ -34,7 +34,7 @@ function Form({ from }: { from: string | null }) {
             name="email"
             type="email"
             autoComplete="email"
-            placeholder="team@dailymattr.com"
+            placeholder="you@dailymattr.com"
             defaultValue={state.email}
             required
             autoFocus

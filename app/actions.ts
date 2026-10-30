@@ -1,15 +1,14 @@
 "use server";
 
 import { refresh } from "next/cache";
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { generateCode } from "@/lib/tracking";
-import { SESSION_COOKIE, isValidSessionToken } from "@/lib/auth";
 import { REFERRAL_CODE_PATTERN, isReferralCodeTaken, suggestReferralCode } from "@/lib/referrals";
 import { routes } from "@/lib/routes";
+import { requireSection } from "@/lib/session";
 import { InstaflowUnreachableError, fetchReelFromInstaflow } from "@/lib/instaflow";
 import { REEL_FETCHES_PER_DAY, parseReelList, reelFetchDay } from "@/lib/reels";
 
@@ -28,11 +27,8 @@ function formValues(formData: FormData) {
   >;
 }
 
-/** Every action below is dashboard-only: reject calls without a valid login. */
-async function requireAdmin() {
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!isValidSessionToken(token)) throw new Error("Not signed in");
-}
+/** Every action below belongs to the Influencers section: reject anyone who can't open it. */
+const requireInfluencerAccess = () => requireSection("influencers");
 
 const emptyToNull = (v: unknown) => (typeof v === "string" && v.trim() === "" ? null : v);
 const optionalText = (max: number) => z.preprocess(emptyToNull, z.string().trim().max(max).nullable());
@@ -166,7 +162,7 @@ const slugTakenError = (slug: string, formData: FormData): FormState => ({
 });
 
 export async function createInfluencer(_prev: FormState, formData: FormData): Promise<FormState> {
-  await requireAdmin();
+  await requireInfluencerAccess();
   const parsed = influencerSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { errors: z.flattenError(parsed.error).fieldErrors, values: formValues(formData) };
@@ -204,7 +200,7 @@ export async function updateInfluencer(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  await requireAdmin();
+  await requireInfluencerAccess();
   const parsed = influencerSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { errors: z.flattenError(parsed.error).fieldErrors, values: formValues(formData) };
@@ -250,13 +246,13 @@ export async function updateInfluencer(
 }
 
 export async function setInfluencerActive(id: string, isActive: boolean) {
-  await requireAdmin();
+  await requireInfluencerAccess();
   await prisma.influencer.update({ where: { id }, data: { isActive } });
   refresh();
 }
 
 export async function deleteInfluencer(id: string) {
-  await requireAdmin();
+  await requireInfluencerAccess();
   await prisma.$transaction(async (tx) => {
     const influencer = await tx.influencer.findUnique({
       where: { id },
@@ -274,7 +270,7 @@ export async function deleteInfluencer(id: string) {
 
 /** Adds Reel links to an influencer. Links already added are skipped. Nothing is fetched yet. */
 export async function addReels(influencerId: string, _prev: FormState, formData: FormData): Promise<FormState> {
-  await requireAdmin();
+  await requireInfluencerAccess();
   const { reels, errors } = parseReelList(String(formData.get("reels") ?? ""));
   if (errors.length) return { errors: { reels: errors }, values: formValues(formData) };
   if (!reels.length) return { errors: { reels: ["Paste at least one Reel link"] }, values: formValues(formData) };
@@ -292,7 +288,7 @@ export async function addReels(influencerId: string, _prev: FormState, formData:
 }
 
 export async function deleteReel(id: string) {
-  await requireAdmin();
+  await requireInfluencerAccess();
   await prisma.reel.delete({ where: { id } });
   refresh();
 }
@@ -353,7 +349,7 @@ async function fetchAndStoreReel(reel: { id: string; url: string; fetchedAt: Dat
 }
 
 export async function fetchReel(id: string): Promise<{ ok: boolean; message: string }> {
-  await requireAdmin();
+  await requireInfluencerAccess();
   const reel = await prisma.reel.findUniqueOrThrow({ where: { id }, select: { id: true, url: true, fetchedAt: true } });
   const result = await fetchAndStoreReel(reel);
   refresh();
@@ -363,7 +359,7 @@ export async function fetchReel(id: string): Promise<{ ok: boolean; message: str
 
 /** Fetches every Reel of an influencer, one at a time. Reels out of fetches for today are skipped. */
 export async function fetchAllReels(influencerId: string): Promise<{ ok: boolean; message: string }> {
-  await requireAdmin();
+  await requireInfluencerAccess();
   const reels = await prisma.reel.findMany({ where: { influencerId }, select: { id: true, url: true, fetchedAt: true } });
   let done = 0;
   let limited = 0;
@@ -383,7 +379,7 @@ export async function fetchAllReels(influencerId: string): Promise<{ ok: boolean
 // ---------- Links ----------
 
 export async function setLinkActive(id: string, isActive: boolean) {
-  await requireAdmin();
+  await requireInfluencerAccess();
   await prisma.link.update({ where: { id }, data: { isActive } });
   refresh();
 }
@@ -402,7 +398,7 @@ export async function saveSignupCount(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  await requireAdmin();
+  await requireInfluencerAccess();
   const parsed = signupCountSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { errors: z.flattenError(parsed.error).fieldErrors, values: formValues(formData) };
@@ -423,7 +419,7 @@ export async function saveSignupCount(
 }
 
 export async function deleteSignupCount(id: string) {
-  await requireAdmin();
+  await requireInfluencerAccess();
   await prisma.signupCount.delete({ where: { id } });
   refresh();
 }
@@ -431,7 +427,7 @@ export async function deleteSignupCount(id: string) {
 // ---------- Partner links (LinkedIn) ----------
 
 export async function setPartnerLinkActive(id: string, isActive: boolean) {
-  await requireAdmin();
+  await requireInfluencerAccess();
   await prisma.partnerLink.update({ where: { id }, data: { isActive } });
   refresh();
 }
@@ -447,7 +443,7 @@ const partnerLinkSchema = z.object({
 });
 
 export async function updatePartnerLink(id: string, _prev: FormState, formData: FormData): Promise<FormState> {
-  await requireAdmin();
+  await requireInfluencerAccess();
   const parsed = partnerLinkSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { errors: z.flattenError(parsed.error).fieldErrors, values: formValues(formData) };
