@@ -1,7 +1,9 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { connection } from "next/server";
 import {
   AppleIcon,
+  ChevronLeftIcon,
   ExternalLinkIcon,
   LinkIcon,
   MonitorIcon,
@@ -55,32 +57,44 @@ import { getBaseUrl, partnerUrl } from "@/lib/tracking";
 const DESCRIPTION =
   "Download clicks from LinkedIn partner posts. Counted separately from influencers.";
 
-export default function LinkedInPage(props: PageProps<"/dridha/linkedin">) {
+export default function LinkedInPage(props: PageProps<"/dridha/influencers/linkedin">) {
   return (
-    <Suspense
-      fallback={
-        <>
-          <PageHeader title="LinkedIn" description={DESCRIPTION} />
-          <div className="space-y-4">
-            <Skeleton className="h-36 rounded-xl" />
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-              {Array.from({ length: 5 }, (_, i) => (
-                <Skeleton key={i} className="h-28 rounded-xl" />
-              ))}
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="mb-4 -ml-2 text-muted-foreground"
+        nativeButton={false}
+        render={<Link href={routes.influencers} />}
+      >
+        <ChevronLeftIcon data-icon="inline-start" />
+        Influencers
+      </Button>
+      <Suspense
+        fallback={
+          <>
+            <PageHeader title="LinkedIn" description={DESCRIPTION} />
+            <div className="space-y-4">
+              <Skeleton className="h-36 rounded-xl" />
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+                {Array.from({ length: 5 }, (_, i) => (
+                  <Skeleton key={i} className="h-28 rounded-xl" />
+                ))}
+              </div>
+              <Skeleton className="h-80 rounded-xl" />
             </div>
-            <Skeleton className="h-80 rounded-xl" />
-          </div>
-        </>
-      }
-    >
-      <LinkedInDetail searchParams={props.searchParams} />
-    </Suspense>
+          </>
+        }
+      >
+        <LinkedInDetail searchParams={props.searchParams} />
+      </Suspense>
+    </>
   );
 }
 
 async function LinkedInDetail({
   searchParams,
-}: Pick<PageProps<"/dridha/linkedin">, "searchParams">) {
+}: Pick<PageProps<"/dridha/influencers/linkedin">, "searchParams">) {
   await connection();
   const range = parseRange((await searchParams).range);
   const days = RANGES[range];

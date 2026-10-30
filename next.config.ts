@@ -15,6 +15,8 @@ const nextConfig: NextConfig = {
   redirects: async () => [
     { source: "/dridha/play-store", destination: "/dridha/stores?store=play", permanent: false },
     { source: "/dridha/app-store", destination: "/dridha/stores?store=apple", permanent: false },
+    // LinkedIn moved under Influencers.
+    { source: "/dridha/linkedin", destination: "/dridha/influencers/linkedin", permanent: false },
   ],
 };
 

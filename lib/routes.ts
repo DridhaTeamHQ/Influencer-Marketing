@@ -5,7 +5,8 @@ export const routes = {
   dashboard: ADMIN_BASE,
   influencers: `${ADMIN_BASE}/influencers`,
   influencer: (id: string) => `${ADMIN_BASE}/influencers/${id}`,
-  linkedin: `${ADMIN_BASE}/linkedin`,
+  /** Tamada Media's LinkedIn partner link, listed with the influencers. */
+  linkedin: `${ADMIN_BASE}/influencers/linkedin`,
   /** Overall, `?store=play` or `?store=apple`. */
   stores: `${ADMIN_BASE}/stores`,
   social: `${ADMIN_BASE}/social`,

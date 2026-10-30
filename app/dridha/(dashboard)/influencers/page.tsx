@@ -19,8 +19,9 @@ import { getInfluencerList, type InfluencerListRow } from "@/lib/analytics";
 import { formatCompact, formatNumber, formatPeriod, PERIOD_BADGE, periodStatus, PLATFORM_LABELS } from "@/lib/format";
 import type { SocialPlatform } from "@/lib/generated/prisma/enums";
 import { listQuery, PAGE_SIZE, parseListParams, type ListParams } from "@/lib/list-params";
+import { prisma } from "@/lib/prisma";
 import { routes } from "@/lib/routes";
-import { getBaseUrl, trackingUrl } from "@/lib/tracking";
+import { getBaseUrl, partnerUrl, trackingUrl } from "@/lib/tracking";
 
 const DESCRIPTION = "Everyone promoting DailyMattr, with their download links and referral codes.";
 
@@ -45,9 +46,10 @@ export default function InfluencersPage(props: PageProps<"/dridha/influencers">)
 async function InfluencerList({ searchParams }: { searchParams: PageProps<"/dridha/influencers">["searchParams"] }) {
   await connection();
   const params = parseListParams(await searchParams);
-  const [{ rows, total, pageCount, counts }, baseUrl] = await Promise.all([
+  const [{ rows, total, pageCount, counts }, baseUrl, linkedin] = await Promise.all([
     getInfluencerList(params),
     getBaseUrl(),
+    getLinkedInPartner(),
   ]);
 
   const addButton = (
@@ -83,6 +85,8 @@ async function InfluencerList({ searchParams }: { searchParams: PageProps<"/drid
   }
 
   const page = Math.min(params.page, pageCount);
+  // Tamada Media is pinned to the top of the first page whenever it matches the filters.
+  const partner = linkedin && page === 1 && partnerMatches(linkedin, params) ? linkedin : null;
   const from = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const to = Math.min(page * PAGE_SIZE, total);
 
@@ -96,7 +100,7 @@ async function InfluencerList({ searchParams }: { searchParams: PageProps<"/drid
         <InfluencerToolbar params={params} counts={counts} />
 
         <Card className="gap-0 py-0">
-          {rows.length === 0 ? (
+          {rows.length === 0 && !partner ? (
             <Empty className="py-12">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
@@ -127,6 +131,7 @@ async function InfluencerList({ searchParams }: { searchParams: PageProps<"/drid
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {partner && <LinkedInPartnerRow partner={partner} baseUrl={baseUrl} />}
                 {rows.map((inf) => (
                   <InfluencerRow key={inf.id} inf={inf} baseUrl={baseUrl} />
                 ))}
@@ -145,6 +150,89 @@ async function InfluencerList({ searchParams }: { searchParams: PageProps<"/drid
         </Card>
       </div>
     </>
+  );
+}
+
+/** Tamada Media's LinkedIn link. It is a partner link (/go/), so its clicks are counted apart from influencers. */
+async function getLinkedInPartner() {
+  const link = await prisma.partnerLink.findFirst({
+    where: { channel: "LinkedIn" },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!link) return null;
+  const last7 = await prisma.partnerClick.count({
+    where: { isBot: false, linkId: link.id, createdAt: { gte: new Date(Date.now() - 7 * 86_400_000) } },
+  });
+  return { ...link, last7 };
+}
+
+type LinkedInPartner = NonNullable<Awaited<ReturnType<typeof getLinkedInPartner>>>;
+
+function partnerMatches(partner: LinkedInPartner, params: ListParams) {
+  const q = params.q.trim().toLowerCase();
+  return (
+    (params.platform === "all" || params.platform === "LINKEDIN") &&
+    (params.status === "all" || (params.status === "active") === partner.isActive) &&
+    (!q || partner.name.toLowerCase().includes(q) || partner.slug.toLowerCase().includes(q))
+  );
+}
+
+function LinkedInPartnerRow({ partner, baseUrl }: { partner: LinkedInPartner; baseUrl: string }) {
+  const url = partnerUrl(baseUrl, partner.slug);
+  return (
+    <TableRow>
+      <TableCell className="pl-4">
+        <Link href={routes.linkedin} className="group flex items-center gap-3">
+          <InfluencerAvatar name={partner.name} seed={partner.id} />
+          <span className="min-w-0">
+            <span className="block max-w-48 truncate font-medium group-hover:underline">{partner.name}</span>
+            <span className="block max-w-48 truncate text-xs text-muted-foreground">Partner · LinkedIn</span>
+          </span>
+        </Link>
+      </TableCell>
+      <TableCell className="hidden md:table-cell">
+        <Badge variant="outline">{PLATFORM_LABELS.LINKEDIN}</Badge>
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center gap-1">
+          <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs">/go/{partner.slug}</code>
+          <CopyButton value={url} label="Copy link" size="icon-xs" />
+        </div>
+      </TableCell>
+      <TableCell className="hidden lg:table-cell">
+        <span className="text-xs text-muted-foreground">Ongoing</span>
+      </TableCell>
+      <TableCell className="hidden text-right font-medium tabular-nums sm:table-cell">
+        {formatNumber(partner.last7)}
+      </TableCell>
+      <TableCell className="hidden sm:table-cell">
+        {partner.isActive ? (
+          <Badge
+            variant="secondary"
+            className="bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary-foreground"
+          >
+            <span className="size-1.5 rounded-full bg-current" />
+            Active
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="text-muted-foreground">
+            <span className="size-1.5 rounded-full bg-current" />
+            Paused
+          </Badge>
+        )}
+      </TableCell>
+      <TableCell className="pr-4">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="View stats"
+          nativeButton={false}
+          render={<Link href={routes.linkedin} />}
+        >
+          <ChevronRightIcon />
+        </Button>
+      </TableCell>
+    </TableRow>
   );
 }
 

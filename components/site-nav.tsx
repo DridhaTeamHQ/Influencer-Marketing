@@ -20,7 +20,6 @@ import { routes } from "@/lib/routes";
 const items = [
   { href: routes.dashboard, label: "Dashboard" },
   { href: routes.influencers, label: "Influencers" },
-  { href: routes.linkedin, label: "LinkedIn" },
   { href: routes.stores, label: "App Stores" },
   { href: routes.social, label: "Social" },
 ];
