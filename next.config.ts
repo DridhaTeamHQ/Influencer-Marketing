@@ -17,6 +17,7 @@ const nextConfig: NextConfig = {
     { source: "/dridha/app-store", destination: "/dridha/stores?store=apple", permanent: false },
     // LinkedIn moved under Influencers.
     { source: "/dridha/linkedin", destination: "/dridha/influencers/linkedin", permanent: false },
+    { source: "/dridha/stores/import", destination: "/dridha/import", permanent: false },
   ],
 };
 

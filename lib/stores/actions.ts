@@ -6,13 +6,20 @@ import { prisma } from "@/lib/prisma";
 import type { AppStore } from "@/lib/generated/prisma/enums";
 import { routes } from "@/lib/routes";
 import { requireSection } from "@/lib/session";
-import { APPLE_DELETIONS_TOTAL_REPORT, APPLE_REFERRER_REPORTS, dbDate, errorMessage } from "@/lib/stores/shared";
+import { APPLE_DELETIONS_TOTAL_REPORT, APPLE_REFERRER_REPORTS, dbDate, errorMessage, indiaToday } from "@/lib/stores/shared";
+import { isOurApp } from "@/lib/stores/rankings";
 import { PLAY_IMPORT_REPORT, deletionsLeftOut } from "@/lib/stores/stats";
-import { decodeCsv, parseAppReferrerCsv, parseDailyCountCsv, parseReferralCodesCsv } from "@/lib/stores/store-import";
+import { decodeCsv, parseAppReferrerCsv, parseChartCsv, parseDailyCountCsv, parseReferralCodesCsv } from "@/lib/stores/store-import";
 import { runSync } from "@/lib/stores/sync";
 
 /** Every action below belongs to the App Stores section. */
 const requireStoreAccess = () => requireSection("stores");
+
+/** Imported and typed-in numbers show on the stores page and the import page. */
+function refreshStorePages() {
+  revalidatePath(routes.stores);
+  revalidatePath(routes.storesImport);
+}
 
 /** "Sync now" on the stores page: copies new reports, then refreshes the page. */
 export async function syncStoreNow(stores: AppStore[], path: string) {
@@ -53,7 +60,7 @@ export async function importPlayUninstalls(_prev: ImportState, formData: FormDat
         })),
       }),
     ]);
-    revalidatePath(routes.stores);
+    refreshStorePages();
     const total = days.reduce((s, d) => s + d.count, 0);
     return {
       ok: true,
@@ -94,7 +101,7 @@ export async function importAppReferrers(_prev: ImportState, formData: FormData)
         })),
       }),
     ]);
-    revalidatePath(routes.stores);
+    refreshStorePages();
     const total = rows.reduce((s, r) => s + r.count, 0);
     return {
       ok: true,
@@ -126,11 +133,60 @@ export async function importReferralCodes(_prev: ImportState, formData: FormData
       create: { date: dbDate(day), count: total, note },
       update: { count: total, note },
     });
-    revalidatePath(routes.stores);
+    refreshStorePages();
     return { ok: true, message: `Total usage ${total.toLocaleString("en")} saved for ${day} (${note}).` };
   } catch (error) {
     return { ok: false, message: errorMessage(error) };
   }
+}
+
+const STORE_NAME = { GOOGLE_PLAY: "Play Store", APP_STORE: "App Store" } as const;
+
+/**
+ * Uploads a store's top-chart list for today (uploading again today replaces it). If our app is
+ * in the list, its position is saved as today's store ranking too.
+ */
+export async function importStoreChart(_prev: ImportState, formData: FormData): Promise<ImportState> {
+  await requireStoreAccess();
+  const store = formData.get("store");
+  const file = formData.get("file");
+  if (store !== "GOOGLE_PLAY" && store !== "APP_STORE") return { ok: false, message: "Pick the store." };
+  if (!(file instanceof File) || file.size === 0) return { ok: false, message: "Choose the CSV file to import." };
+  if (file.size > MAX_BYTES) return { ok: false, message: "That file is too big for a chart list (max 2 MB)." };
+
+  try {
+    const entries = parseChartCsv(decodeCsv(new Uint8Array(await file.arrayBuffer())));
+    const day = indiaToday();
+    const ours = entries.find((e) => isOurApp(e.appName));
+    // Today's list and today's position are replaced together; no DailyMattr in the list means no position today.
+    const today = { store: store as AppStore, date: dbDate(day), category: "", country: "" };
+    await prisma.$transaction([
+      prisma.storeChartEntry.deleteMany({ where: { store, date: dbDate(day) } }),
+      prisma.storeChartEntry.createMany({ data: entries.map((e) => ({ store, date: dbDate(day), ...e })) }),
+      ours
+        ? prisma.storeRanking.upsert({
+            where: { store_date_category_country: today },
+            create: { ...today, rank: ours.rank },
+            update: { rank: ours.rank },
+          })
+        : prisma.storeRanking.deleteMany({ where: today }),
+    ]);
+    refreshStorePages();
+    return {
+      ok: true,
+      message: `Saved ${entries.length} apps for the ${STORE_NAME[store]} on ${day}. ${
+        ours ? `DailyMattr is #${ours.rank}, saved as today’s ranking.` : "DailyMattr isn’t in the list."
+      }`,
+    };
+  } catch (error) {
+    return { ok: false, message: errorMessage(error) };
+  }
+}
+
+export async function deleteStoreRanking(id: string) {
+  await requireStoreAccess();
+  await prisma.storeRanking.delete({ where: { id } });
+  refreshStorePages();
 }
 
 /**
@@ -160,7 +216,7 @@ export async function saveAppleDeletions(_prev: ImportState, formData: FormData)
           }),
         ]),
   ]);
-  revalidatePath(routes.stores);
+  refreshStorePages();
   if (total === null) return { ok: true, message: "Cleared the total you entered." };
   const saved = await deletionsLeftOut();
   return {

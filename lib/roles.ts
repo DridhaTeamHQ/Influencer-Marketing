@@ -12,11 +12,11 @@ export const ROLE_LABELS: Record<Role, string> = {
 
 export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   DEVELOPER: "Every section, and can manage all logins.",
-  ADMIN: "App Stores, and can manage all logins.",
-  CREATOR: "Dashboard, Influencers and Social.",
+  ADMIN: "Every section, and can manage all logins.",
+  CREATOR: "Dashboard, Influencers and Social. No App Stores or Import.",
 };
 
-export type Section = "dashboard" | "influencers" | "stores" | "social" | "users";
+export type Section = "dashboard" | "influencers" | "stores" | "social" | "import" | "users";
 
 /** In nav order. The first section a role can open is where it lands after signing in. */
 export const SECTIONS: { key: Section; href: string; label: string }[] = [
@@ -24,12 +24,14 @@ export const SECTIONS: { key: Section; href: string; label: string }[] = [
   { key: "influencers", href: routes.influencers, label: "Influencers" },
   { key: "stores", href: routes.stores, label: "App Stores" },
   { key: "social", href: routes.social, label: "Social" },
+  { key: "import", href: routes.storesImport, label: "Import" },
   { key: "users", href: routes.users, label: "Users" },
 ];
 
+/** Import feeds the App Stores numbers, so the roles that see App Stores get it too. */
 const ACCESS: Record<Role, Section[]> = {
-  DEVELOPER: ["dashboard", "influencers", "stores", "social", "users"],
-  ADMIN: ["stores", "users"],
+  DEVELOPER: ["dashboard", "influencers", "stores", "social", "import", "users"],
+  ADMIN: ["dashboard", "influencers", "stores", "social", "import", "users"],
   CREATOR: ["dashboard", "influencers", "social"],
 };
 

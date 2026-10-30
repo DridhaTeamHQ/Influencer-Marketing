@@ -9,6 +9,8 @@ export const routes = {
   linkedin: `${ADMIN_BASE}/influencers/linkedin`,
   /** Overall, `?store=play` or `?store=apple`. */
   stores: `${ADMIN_BASE}/stores`,
+  /** CSV imports, typed-in deletions and store rankings. `?section=` picks the form. */
+  storesImport: `${ADMIN_BASE}/import`,
   social: `${ADMIN_BASE}/social`,
   instagram: `${ADMIN_BASE}/social/instagram`,
   facebook: `${ADMIN_BASE}/social/facebook`,

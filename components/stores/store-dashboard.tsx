@@ -11,11 +11,8 @@ import {
 } from "lucide-react";
 import { StatCard } from "@/components/analytics/stat-card";
 import { PageHeader } from "@/components/page-header";
-import { ImportReferrersDialog } from "@/components/stores/import-referrers-dialog";
-import { ImportUninstallsDialog } from "@/components/stores/import-uninstalls-dialog";
-import { AppleDeletionsDialog } from "@/components/stores/apple-deletions-dialog";
-import { ReferralUploadDialog } from "@/components/stores/referral-dialog";
 import { AccuracyInfo, NotesInfo } from "@/components/stores/accuracy-badge";
+import { RankingCard } from "@/components/stores/ranking-card";
 import { BreakdownChart } from "@/components/stores/breakdown-chart";
 import { DailyTrendChart } from "@/components/stores/daily-trend-chart";
 import { StoreChart, type ChartStore } from "@/components/stores/store-chart";
@@ -37,14 +34,13 @@ import {
   combineStoreReports,
   REFERRAL_USAGE_OFFSET,
   worst,
-  deletionsLeftOut,
   getReferralReport,
   getStoreReport,
   type Breakdown,
   type ReferralPoint,
   type StoreReport,
 } from "@/lib/stores/stats";
-import { daysAgo } from "@/lib/stores/shared";
+import { getLatestChart, getRankingSummary } from "@/lib/stores/rankings";
 import { getSyncStatus, missingEnvFor, runSync } from "@/lib/stores/sync";
 
 /** One store's name, chart color and how to connect it. */
@@ -84,8 +80,6 @@ type ViewConfig = {
   uninstallLabel: string;
   /** Show "Total downloads" (first-time + reinstalls) instead of the unique users card. */
   totalDownloadsCard?: boolean;
-  /** Extra buttons next to "Sync now", e.g. the Play Store CSV import. */
-  actions?: React.ReactNode;
 };
 
 /** The three filters on the stores page, picked with `?store=`. */
@@ -112,7 +106,6 @@ const VIEWS = {
     uniqueLabel: "Store visitors",
     uniqueHint: "People who opened the store listing",
     uninstallLabel: "Uninstalls",
-    actions: <ImportUninstallsDialog />,
   },
   apple: {
     label: "App Store",
@@ -214,11 +207,12 @@ export async function StoreDashboard({
     }),
   );
 
-  const hasApple = stores.includes("APP_STORE");
-  const [reports, referrals, deletionsTotal] = await Promise.all([
+  const [reports, referrals, ranking, chart] = await Promise.all([
     Promise.all(stores.map((store) => getStoreReport(store, range))),
     overall ? getReferralReport() : undefined,
-    hasApple ? deletionsLeftOut() : null,
+    // Rankings are per store, so they only show on a single store's page.
+    overall ? null : getRankingSummary(stores[0]!),
+    overall ? null : getLatestChart(stores[0]!),
   ]);
   const report = overall
     ? combineStoreReports(stores.map((store, i) => ({ ...STORES[store], report: reports[i]! })))
@@ -236,7 +230,6 @@ export async function StoreDashboard({
         <span className="text-xs text-muted-foreground">
           {statuses.map((s) => named(s.store, s.syncedAt ? `Synced ${timeAgo(s.syncedAt)}` : "Not synced yet")).join(" · ")}
         </span>
-        {config.actions}
         <SyncButton stores={stores} path={routes.stores} />
       </PageHeader>
 
@@ -295,12 +288,7 @@ export async function StoreDashboard({
           value={totals.uninstalls}
           prev={prev.uninstalls}
           hint={`Net this period: ${net >= 0 ? "+" : ""}${formatNumber(net)}`}
-          tag={
-            <>
-              <AccuracyInfo accuracy={accuracy.uninstalls} reason={reasons.uninstalls} />
-              {hasApple && <AppleDeletionsDialog current={deletionsTotal} yesterday={daysAgo(1)} />}
-            </>
-          }
+          tag={<AccuracyInfo accuracy={accuracy.uninstalls} reason={reasons.uninstalls} />}
         />
         <StatCard
           icon={<SmartphoneIcon />}
@@ -336,6 +324,8 @@ export async function StoreDashboard({
       </div>
 
       {referrals && <ReferralSection {...referrals} />}
+
+      {!overall && <RankingCard store={config.title} ranking={ranking} chart={chart} />}
 
       <Card>
         <CardHeader>
@@ -447,11 +437,6 @@ function BreakdownCard({ report }: { report: StoreReport }) {
         <CardHeader>
           <CardTitle>Where installs came from</CardTitle>
           <CardDescription>Totals for the selected dates</CardDescription>
-          {report.breakdowns.some((b) => b.key === "appReferrer") && (
-            <CardAction>
-              <ImportReferrersDialog />
-            </CardAction>
-          )}
         </CardHeader>
         <div className="overflow-x-auto px-6 pt-4 pb-4">
           <TabsList>
@@ -573,11 +558,8 @@ function ReferralSection({ points, latest }: { points: ReferralPoint[]; latest: 
         <CardDescription>
           {latest
             ? `First-time downloads (both stores) up to ${shortDate(latest.date)}, the date of the latest referral CSV`
-            : "Upload the referral codes CSV to split downloads into referral and without referral"}
+            : "Upload the referral codes CSV on the Import page to split downloads into referral and without referral"}
         </CardDescription>
-        <CardAction>
-          <ReferralUploadDialog />
-        </CardAction>
       </CardHeader>
 
       {latest && (

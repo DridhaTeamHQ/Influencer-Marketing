@@ -32,7 +32,7 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  // Sections this role can't open send it to its own first section (e.g. admins land on App Stores).
+  // Sections this role can't open send it to its own first section (e.g. a creator opening App Stores lands on the Dashboard).
   if (!canOpenPath(user.role, pathname)) {
     return NextResponse.redirect(new URL(homeFor(user.role), request.url));
   }

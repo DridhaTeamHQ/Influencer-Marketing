@@ -246,6 +246,39 @@ model StoreSync {
   syncedAt DateTime @default(now()) @updatedAt
 }
 
+/// The app's chart position in a store on a day, typed in on the import page (the stores don't offer it in their APIs).
+model StoreRanking {
+  id        String   @id @default(cuid())
+  store     AppStore
+  date      DateTime @db.Date
+  /// The chart, e.g. "Top free · News".
+  category  String
+  /// e.g. "India"; empty when not given.
+  country   String   @default("")
+  /// 1 = first place.
+  rank      Int
+  createdAt DateTime @default(now())
+
+  @@unique([store, date, category, country])
+  @@index([store, date])
+}
+
+/// One app in a store's top chart, from a list uploaded on the import page (one list per store per day).
+model StoreChartEntry {
+  id        String   @id @default(cuid())
+  store     AppStore
+  date      DateTime @db.Date
+  /// 1 = first place.
+  rank      Int
+  appName   String
+  /// The publisher, when the file has it.
+  developer String   @default("")
+  createdAt DateTime @default(now())
+
+  @@unique([store, date, rank])
+  @@index([store, date])
+}
+
 /// Our own social account signed in through the platform's login (OAuth), e.g. the YouTube channel.
 /// One per platform; the page reads its numbers live from the platform's API.
 model SocialConnection {
@@ -344,7 +377,7 @@ model AiReport {
 enum UserRole {
   /// Everything, including managing other developers.
   DEVELOPER
-  /// App Stores, and creating or managing every login.
+  /// Every section, and creating or managing every login.
   ADMIN
   /// Dashboard, Influencers and Social.
   CREATOR
