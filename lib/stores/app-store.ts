@@ -2,7 +2,6 @@ import { createSign } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { prisma } from "@/lib/prisma";
 import {
-  APPLE_MANUAL_REPORT,
   APPLE_REFERRER_REPORTS,
   b64url,
   daysAgo,
@@ -352,11 +351,6 @@ async function syncAnalytics() {
       prisma.storeStat.createMany({ data: mergeRows(STORE, "apple_analytics", rows), skipDuplicates: true }),
     ]);
     await markCopied(key(instance.id));
-  }
-  if (todo.length) {
-    // Apple's own numbers now cover these days: drop deletions typed in for them.
-    const last = await prisma.storeStat.findFirst({ where: { store: STORE, report: "apple_analytics" }, orderBy: { date: "desc" } });
-    if (last) await prisma.storeStat.deleteMany({ where: { store: STORE, report: APPLE_MANUAL_REPORT, date: { lte: last.date } } });
   }
   return todo.length + (await syncReferrers(active));
 }

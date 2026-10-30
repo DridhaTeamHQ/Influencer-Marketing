@@ -37,13 +37,14 @@ import {
   combineStoreReports,
   REFERRAL_USAGE_OFFSET,
   worst,
-  getAppleDeletionGap,
+  deletionsLeftOut,
   getReferralReport,
   getStoreReport,
   type Breakdown,
   type ReferralPoint,
   type StoreReport,
 } from "@/lib/stores/stats";
+import { daysAgo } from "@/lib/stores/shared";
 import { getSyncStatus, missingEnvFor, runSync } from "@/lib/stores/sync";
 
 /** One store's name, chart color and how to connect it. */
@@ -213,10 +214,11 @@ export async function StoreDashboard({
     }),
   );
 
-  const [reports, referrals, deletionGap] = await Promise.all([
+  const hasApple = stores.includes("APP_STORE");
+  const [reports, referrals, deletionsTotal] = await Promise.all([
     Promise.all(stores.map((store) => getStoreReport(store, range))),
     overall ? getReferralReport() : undefined,
-    stores.includes("APP_STORE") ? getAppleDeletionGap() : null,
+    hasApple ? deletionsLeftOut() : null,
   ]);
   const report = overall
     ? combineStoreReports(stores.map((store, i) => ({ ...STORES[store], report: reports[i]! })))
@@ -296,7 +298,7 @@ export async function StoreDashboard({
           tag={
             <>
               <AccuracyInfo accuracy={accuracy.uninstalls} reason={reasons.uninstalls} />
-              {deletionGap && <AppleDeletionsDialog gap={deletionGap} />}
+              {hasApple && <AppleDeletionsDialog current={deletionsTotal} yesterday={daysAgo(1)} />}
             </>
           }
         />

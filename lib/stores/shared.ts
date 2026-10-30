@@ -55,10 +55,11 @@ export function errorMessage(error: unknown) {
 }
 
 /**
- * App Store deletions typed in on the stores page for days Apple's Analytics report doesn't cover
- * yet. They only count after Apple's last reported day, and the sync removes them once it does.
+ * App Store Connect's all-time deletions, typed in on the stores page (one row, dated the day it's
+ * "as of"). Apple's Analytics report leaves out small numbers, so the difference between this total
+ * and the report's deletions up to that day counts as deletions on that day.
  */
-export const APPLE_MANUAL_REPORT = "apple_manual_deletions";
+export const APPLE_DELETIONS_TOTAL_REPORT = "apple_manual_total_deletions";
 
 /**
  * Downloads by referring app / website: from Apple's "App Downloads Detailed" report (monthly rows are

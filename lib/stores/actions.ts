@@ -6,8 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE, isValidSessionToken } from "@/lib/auth";
 import type { AppStore } from "@/lib/generated/prisma/enums";
 import { routes } from "@/lib/routes";
-import { APPLE_MANUAL_REPORT, APPLE_REFERRER_REPORTS, dbDate, errorMessage } from "@/lib/stores/shared";
-import { PLAY_IMPORT_REPORT, getAppleDeletionGap } from "@/lib/stores/stats";
+import { APPLE_DELETIONS_TOTAL_REPORT, APPLE_REFERRER_REPORTS, dbDate, errorMessage } from "@/lib/stores/shared";
+import { PLAY_IMPORT_REPORT, deletionsLeftOut } from "@/lib/stores/stats";
 import { decodeCsv, parseAppReferrerCsv, parseDailyCountCsv, parseReferralCodesCsv } from "@/lib/stores/store-import";
 import { runSync } from "@/lib/stores/sync";
 
@@ -136,43 +136,37 @@ export async function importReferralCodes(_prev: ImportState, formData: FormData
 }
 
 /**
- * Saves deletions typed in from App Store Connect for days Apple's Analytics report doesn't cover
- * yet. Fields are named `d-YYYY-MM-DD`; an empty field removes that day's number.
+ * Saves App Store Connect's all-time deletions as of a day (`total`, `date`). It replaces any total
+ * entered before; an empty total clears it.
  */
 export async function saveAppleDeletions(_prev: ImportState, formData: FormData): Promise<ImportState> {
   await requireAdmin();
-  const gap = await getAppleDeletionGap();
-  if (!gap) return { ok: false, message: "Apple’s report already covers every day, so there’s nothing to fill in." };
-
-  const allowed = new Set(gap.days.map((d) => d.date));
-  const entries: { date: string; count: number | null }[] = [];
-  for (const [name, raw] of formData.entries()) {
-    const date = name.startsWith("d-") ? name.slice(2) : null;
-    if (!date || !allowed.has(date)) continue;
-    const text = String(raw).trim();
-    const count = text === "" ? null : Number(text);
-    if (count !== null && (!Number.isInteger(count) || count < 0 || count > 1_000_000)) {
-      return { ok: false, message: `${date}: enter a whole number, 0 or more.` };
-    }
-    entries.push({ date, count });
+  const text = String(formData.get("total") ?? "").trim();
+  const day = String(formData.get("date") ?? "");
+  const total = text === "" ? null : Number(text);
+  if (total !== null && (!Number.isInteger(total) || total < 0 || total > 10_000_000)) {
+    return { ok: false, message: "Enter a whole number, 0 or more." };
   }
+  if (total !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(Date.parse(day)))) {
+    return { ok: false, message: "Pick the day App Store Connect’s total goes up to." };
+  }
+  if (total !== null && dbDate(day).getTime() > Date.now()) return { ok: false, message: "The date can’t be in the future." };
 
   await prisma.$transaction([
-    prisma.storeStat.deleteMany({
-      where: { store: "APP_STORE", report: APPLE_MANUAL_REPORT, date: { in: entries.map((e) => dbDate(e.date)) } },
-    }),
-    prisma.storeStat.createMany({
-      data: entries
-        .filter((e) => e.count !== null)
-        .map((e) => ({ store: "APP_STORE" as const, report: APPLE_MANUAL_REPORT, split: "TOTAL" as const, date: dbDate(e.date), uninstalls: e.count! })),
-    }),
+    prisma.storeStat.deleteMany({ where: { store: "APP_STORE", report: APPLE_DELETIONS_TOTAL_REPORT } }),
+    ...(total === null
+      ? []
+      : [
+          prisma.storeStat.create({
+            data: { store: "APP_STORE", report: APPLE_DELETIONS_TOTAL_REPORT, split: "TOTAL", date: dbDate(day), uninstalls: total },
+          }),
+        ]),
   ]);
   revalidatePath(routes.stores);
-  const filled = entries.filter((e) => e.count !== null);
+  if (total === null) return { ok: true, message: "Cleared the total you entered." };
+  const saved = await deletionsLeftOut();
   return {
     ok: true,
-    message: filled.length
-      ? `Saved ${filled.reduce((s, e) => s + e.count!, 0).toLocaleString("en")} deletions over ${filled.length} day${filled.length === 1 ? "" : "s"}.`
-      : "Cleared the numbers you entered.",
+    message: `Saved ${total.toLocaleString("en")} deletions all time as of ${day}. Apple’s report has ${saved?.reported.toLocaleString("en") ?? 0}, so ${saved?.leftOut.toLocaleString("en") ?? 0} more are counted on ${day}.`,
   };
 }

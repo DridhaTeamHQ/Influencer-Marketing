@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { AppStore, StoreStatSplit } from "@/lib/generated/prisma/enums";
 import { rangeDays, type StoreRange } from "@/lib/stores/range";
-import { APPLE_MANUAL_REPORT, APPLE_REFERRER_REPORTS, countryName, daysAgo, dbDate, isoDay } from "@/lib/stores/shared";
+import { APPLE_DELETIONS_TOTAL_REPORT, APPLE_REFERRER_REPORTS, countryName, daysAgo, dbDate, isoDay } from "@/lib/stores/shared";
 import { cleanReferrerName } from "@/lib/stores/store-import";
 
 /**
@@ -390,18 +390,14 @@ async function appStoreReport(range: StoreRange): Promise<StoreReport> {
     prisma.storeStat.findFirst({ where: where(store, analytics), orderBy: { date: "desc" } }),
   ]);
   const hasAnalytics = firstAnalytics !== null;
-  // Deletions typed in for days Apple hasn't reported only count after its last reported day, so its
-  // own numbers take over as soon as they arrive.
-  const appleUntil = lastAnalytics ? isoDay(lastAnalytics.date) : "";
-  const manual: Source = { report: APPLE_MANUAL_REPORT, split: "TOTAL" };
+  // App Store Connect's all-time deletions, if typed in: what Apple's report leaves out counts on its day.
+  const extra = await deletionsLeftOut();
 
   const [
     salesDaily,
     analyticsDaily,
-    manualDaily,
     salesPrevDaily,
     analyticsPrevDaily,
-    manualPrevDaily,
     sources,
     campaigns,
     channels,
@@ -413,10 +409,8 @@ async function appStoreReport(range: StoreRange): Promise<StoreReport> {
     await Promise.all([
       perDay(store, sales, current),
       perDay(store, analytics, current),
-      perDay(store, manual, current),
       perDay(store, sales, previous),
       perDay(store, analytics, previous),
-      perDay(store, manual, previous),
       breakdown(store, analytics, current, "utmSource", noSource),
       breakdown(store, analytics, current, "utmCampaign", noCampaign),
       breakdown(store, analytics, current, "channel"),
@@ -426,11 +420,11 @@ async function appStoreReport(range: StoreRange): Promise<StoreReport> {
       appleReferrers(range),
     ]);
 
-  /** One day's numbers: installs from Sales, deletions and devices from Analytics (or typed in, past Apple's last day). */
-  const dayRow = (date: string, salesMap: Map<string, Totals>, analyticsMap: Map<string, Totals>, manualMap: Map<string, Totals>): DayRow => {
+  /** One day's numbers: installs from Sales, deletions and devices from Analytics (plus what it left out, on the typed total's day). */
+  const dayRow = (date: string, salesMap: Map<string, Totals>, analyticsMap: Map<string, Totals>): DayRow => {
     const s = salesMap.get(date) ?? zero();
     const a = analyticsMap.get(date) ?? zero();
-    const typed = date > appleUntil ? (manualMap.get(date)?.uninstalls ?? 0) : 0;
+    const typed = extra && date === extra.asOf ? extra.leftOut : 0;
     return { date, downloads: s.downloads, reinstalls: s.reinstalls, uninstalls: a.uninstalls + typed, uniqueUsers: a.uniqueUsers };
   };
   const total = (rows: DayRow[]) =>
@@ -439,18 +433,11 @@ async function appStoreReport(range: StoreRange): Promise<StoreReport> {
       return t;
     }, zero());
 
-  const daily = rangeDays(range).map((d) => dayRow(d, salesDaily, analyticsDaily, manualDaily));
-  const prevDaily = rangeDays({ from: range.prevFrom, days: range.days }).map((d) =>
-    dayRow(d, salesPrevDaily, analyticsPrevDaily, manualPrevDaily),
-  );
-  // Typed-in deletions up to the end of the range, for the notes and active installs.
-  const typedDays = await prisma.storeStat.findMany({
-    where: { ...where(store, manual), date: { gt: appleUntil ? dbDate(appleUntil) : undefined, lte: dbDate(range.to) } },
-    select: { date: true, uninstalls: true },
-    orderBy: { date: "asc" },
-  });
-  const typedTotal = typedDays.reduce((s, d) => s + d.uninstalls, 0);
-  const hasTyped = typedDays.length > 0;
+  const daily = rangeDays(range).map((d) => dayRow(d, salesDaily, analyticsDaily));
+  const prevDaily = rangeDays({ from: range.prevFrom, days: range.days }).map((d) => dayRow(d, salesPrevDaily, analyticsPrevDaily));
+  const hasTyped = extra !== null;
+  // The left-out deletions count in active installs once the range reaches their day.
+  const typedTotal = extra && extra.asOf <= range.to ? extra.leftOut : 0;
 
   // Countries: installs from Sales, with Analytics' deletions added per country.
   const countries = new Map(salesCountries.map((r) => [r.label, { ...r, uninstalls: 0, uniqueUsers: 0 }]));
@@ -468,14 +455,14 @@ async function appStoreReport(range: StoreRange): Promise<StoreReport> {
     const [allSales, allAnalytics] = await Promise.all([sum(store, sales, allTime), sum(store, analytics, allTime)]);
     active = {
       value: Math.max(0, allSales.downloads + allSales.reinstalls - allAnalytics.uninstalls - typedTotal),
-      hint: hasTyped
-        ? "Estimated: all downloads + re-downloads − deletions (Apple’s report plus the ones you entered)"
+      hint: typedTotal
+        ? "Estimated: all downloads + re-downloads − deletions (App Store Connect’s total you entered)"
         : "Estimated: all downloads + re-downloads − deletions Apple has reported",
     };
   }
-  if (hasTyped) {
+  if (extra) {
     notes.push(
-      `Deletions for ${isoDay(typedDays[0]!.date)} to ${isoDay(typedDays.at(-1)!.date)} (${typedTotal.toLocaleString("en")}) are numbers you entered. When Apple’s report for those days arrives, its numbers replace them automatically.`,
+      `You entered ${extra.total.toLocaleString("en")} deletions all time as of ${extra.asOf} (App Store Connect). Apple’s report has ${extra.reported.toLocaleString("en")} up to that day, so the other ${extra.leftOut.toLocaleString("en")} are counted on ${extra.asOf}. As Apple reports more, that number shrinks by itself.`,
     );
   }
   if (hasAnalytics) {
@@ -486,7 +473,7 @@ async function appStoreReport(range: StoreRange): Promise<StoreReport> {
     // Apple's daily Analytics files usually lag a day or two; flag it when they're further behind.
     if (lastDay < daysAgo(3)) {
       notes.push(
-        `Apple hasn’t published its Analytics report for days after ${lastDay} yet. Apple decides when (it can take several days and doesn’t give a date). Until then you can enter deletions from App Store Connect with the pencil on the Deletions card; Apple’s numbers replace them on the next sync after they arrive.`,
+        `Apple hasn’t published its Analytics report for days after ${lastDay} yet. Apple decides when (it can take several days and doesn’t give a date). Until then you can enter App Store Connect’s all-time deletions with the pencil on the Deletions card.`,
       );
     }
   } else {
@@ -682,24 +669,18 @@ export async function getReferralReport() {
   return { points, latest: points.at(-1)! };
 }
 
-export type DeletionGap = { from: string; to: string; days: { date: string; value: number | null }[]; appleUntil: string | null };
+/** The all-time deletions typed in from App Store Connect, and how many of them Apple's report leaves out. */
+export type DeletionsTotal = { total: number; asOf: string; reported: number; leftOut: number };
 
-/**
- * Days Apple's Analytics report doesn't cover yet (after its last day, up to yesterday, at most 30),
- * with the deletions typed in for them so far. Null when Apple's report is up to date.
- */
-export async function getAppleDeletionGap(): Promise<DeletionGap | null> {
+/** Null until someone enters App Store Connect's all-time deletions with the pencil. */
+export async function deletionsLeftOut(): Promise<DeletionsTotal | null> {
   const store = "APP_STORE" as const;
-  const last = await prisma.storeStat.findFirst({ where: where(store, { report: "apple_analytics", split: "SOURCE" }), orderBy: { date: "desc" } });
-  const appleUntil = last ? isoDay(last.date) : null;
-  const to = daysAgo(1);
-  const after = appleUntil ? isoDay(new Date(Date.parse(`${appleUntil}T00:00:00Z`) + 86_400_000)) : daysAgo(30);
-  const from = after < daysAgo(30) ? daysAgo(30) : after;
-  if (from > to) return null;
-
-  const typed = await perDay(store, { report: APPLE_MANUAL_REPORT, split: "TOTAL" }, { from, to });
-  const days = rangeDays({ from, days: Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1 })
-    .reverse()
-    .map((date) => ({ date, value: typed.has(date) ? typed.get(date)!.uninstalls : null }));
-  return { from, to, days, appleUntil };
+  const typed = await prisma.storeStat.findFirst({
+    where: { store, report: APPLE_DELETIONS_TOTAL_REPORT },
+    orderBy: { date: "desc" },
+  });
+  if (!typed) return null;
+  const asOf = isoDay(typed.date);
+  const { uninstalls: reported } = await sum(store, { report: "apple_analytics", split: "SOURCE" }, { from: "2000-01-01", to: asOf });
+  return { total: typed.uninstalls, asOf, reported, leftOut: Math.max(0, typed.uninstalls - reported) };
 }
