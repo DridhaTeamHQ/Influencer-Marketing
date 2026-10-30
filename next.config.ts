@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
     agentFeedback: true,
   },
   cacheComponents: true,
+  // Thumbnail proxy requests carry very long CDN URLs and flood the dev terminal.
+  logging: {
+    incomingRequests: { ignore: [/\/social\/[^/]+\/image/] },
+  },
   partialPrefetching: true,
   // The two store pages became filters on one page; keep old bookmarks working.
   redirects: async () => [

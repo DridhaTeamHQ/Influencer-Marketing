@@ -6,9 +6,10 @@ import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 
-type Tab = { href: string; label: string };
+/** `exact`: only active on this very path (for a parent like the overview). */
+type Tab = { href: string; label: string; exact?: boolean };
 
-/** Instagram / Facebook / YouTube switcher on the Social pages. */
+/** Overview / Instagram / Facebook / YouTube switcher on the Social pages. */
 export function SocialTabs({ tabs }: { tabs: Tab[] }) {
   return (
     // The pathname is only known at request time, so the active state streams in.
@@ -26,7 +27,7 @@ function Tabs({ tabs, pathname }: { tabs: Tab[]; pathname: string | null }) {
   return (
     <ButtonGroup aria-label="Platform">
       {tabs.map((tab) => {
-        const active = pathname?.startsWith(tab.href) ?? false;
+        const active = (tab.exact ? pathname === tab.href : pathname?.startsWith(tab.href)) ?? false;
         return (
           <Button
             key={tab.href}

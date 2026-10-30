@@ -228,13 +228,21 @@ type VideoItem = {
 /** The latest uploads, newest first. */
 export async function getRecentVideos(uploadsPlaylist: string | null, count = 12) {
   if (!uploadsPlaylist) return [];
-  const body = await google<{ items?: { contentDetails: { videoId: string } }[] }>(`${DATA_API}/playlistItems`, {
-    part: "contentDetails",
-    playlistId: uploadsPlaylist,
-    maxResults: String(count),
-  });
-  const ids = (body.items ?? []).map((i) => i.contentDetails.videoId);
-  const videos = await getVideos(ids);
+  // YouTube sends 50 at most per page (1 quota unit each).
+  const ids: string[] = [];
+  let pageToken: string | undefined;
+  do {
+    const body = await google<{ items?: { contentDetails: { videoId: string } }[]; nextPageToken?: string }>(`${DATA_API}/playlistItems`, {
+      part: "contentDetails",
+      playlistId: uploadsPlaylist,
+      maxResults: String(Math.min(count - ids.length, 50)),
+      ...(pageToken && { pageToken }),
+    });
+    ids.push(...(body.items ?? []).map((i) => i.contentDetails.videoId));
+    pageToken = body.nextPageToken;
+  } while (pageToken && ids.length < count);
+  const chunks = Array.from({ length: Math.ceil(ids.length / 50) }, (_, i) => ids.slice(i * 50, i * 50 + 50));
+  const videos = (await Promise.all(chunks.map(getVideos))).flat();
   return videos.sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
 }
 

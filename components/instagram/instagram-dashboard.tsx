@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { connection } from "next/server";
 import {
   BookmarkIcon,
@@ -26,6 +27,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AiTrending, AiTrendingSkeleton } from "@/components/social/ai-trending";
 import { percentChange } from "@/lib/analytics";
 import { formatCompact, formatNumber, timeAgo } from "@/lib/format";
 import { routes } from "@/lib/routes";
@@ -145,10 +147,13 @@ export async function InstagramDashboard({
         </form>
       </PageHeader>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard icon={<UsersIcon />} accent="ios" label="Followers" value={formatNumber(profile.followers)} hint="Right now" />
         <StatCard icon={<UserCheckIcon />} accent="android" label="Following" value={formatNumber(profile.following)} hint="Right now" />
         <StatCard icon={<ImageIcon />} accent="others" label="Posts" value={formatNumber(profile.posts)} hint="All time" />
+        <Suspense fallback={<AiTrendingSkeleton />}>
+          <AiTrending platform="instagram" />
+        </Suspense>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">

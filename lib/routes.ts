@@ -12,8 +12,6 @@ export const routes = {
   instagram: `${ADMIN_BASE}/social/instagram`,
   facebook: `${ADMIN_BASE}/social/facebook`,
   youtube: `${ADMIN_BASE}/social/youtube`,
-  /** Our LinkedIn company page (the partner-link clicks are at `linkedin`). */
-  linkedinPage: `${ADMIN_BASE}/social/linkedin`,
   login: `${ADMIN_BASE}/login`,
 };
 

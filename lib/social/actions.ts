@@ -6,8 +6,10 @@ import { SESSION_COOKIE, isValidSessionToken } from "@/lib/auth";
 import { routes } from "@/lib/routes";
 import { disconnect as disconnectFacebookPage } from "@/lib/social/facebook";
 import { disconnect as disconnectInstagramAccount } from "@/lib/social/instagram";
-import { disconnect as disconnectLinkedinPage } from "@/lib/social/linkedin";
+import { refreshPlatformTrends } from "@/lib/social/ai-reports";
+import { PLATFORMS, type PlatformKey } from "@/lib/social/overview";
 import { disconnect } from "@/lib/social/youtube";
+import { errorMessage } from "@/lib/stores/shared";
 
 /** "Disconnect" on the YouTube page: forgets the channel and removes our access at Google. */
 export async function disconnectYoutube() {
@@ -30,9 +32,16 @@ export async function disconnectFacebook() {
   revalidatePath(routes.facebook);
 }
 
-/** "Disconnect" on the LinkedIn page: forgets the company page and revokes our access at LinkedIn. */
-export async function disconnectLinkedin() {
+/** The refresh button on a platform's "Trending" tile: has the AI look at that platform's videos again now. */
+export async function refreshTrends(platform: PlatformKey) {
   if (!isValidSessionToken((await cookies()).get(SESSION_COOKIE)?.value)) throw new Error("Not signed in");
-  await disconnectLinkedinPage();
-  revalidatePath(routes.linkedinPage);
+  if (!(platform in PLATFORMS)) throw new Error("Unknown platform");
+  try {
+    await refreshPlatformTrends(platform);
+    revalidatePath(routes[platform]);
+    return { ok: true as const };
+  } catch (e) {
+    // Thrown errors lose their message in production, so hand it back as data.
+    return { ok: false as const, error: errorMessage(e) };
+  }
 }

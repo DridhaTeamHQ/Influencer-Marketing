@@ -276,10 +276,14 @@ export type Totals = Record<keyof typeof PAGE_METRICS, number>;
 /** Which numbers Facebook gave us. */
 export type Available = Partial<Record<keyof Totals, boolean>>;
 
-/** Facebook allows at most 93 days per insights call, so longer ranges are fetched in pieces. */
+/**
+ * Facebook allows at most 93 days per insights call, so longer ranges are fetched in pieces. Page
+ * insights only go back 2 years and older dates are rejected, so those days are left out.
+ */
 function windows(from: string, to: string) {
   const out: { since: number; until: number }[] = [];
-  for (let start = Date.parse(`${from}T00:00:00Z`), end = Date.parse(`${to}T00:00:00Z`); start <= end; start += 90 * DAY) {
+  const oldest = Date.now() - 2 * 365 * DAY + DAY;
+  for (let start = Math.max(Date.parse(`${from}T00:00:00Z`), Date.parse(`${isoDay(new Date(oldest))}T00:00:00Z`)), end = Date.parse(`${to}T00:00:00Z`); start <= end; start += 90 * DAY) {
     const last = Math.min(start + 89 * DAY, end);
     out.push({ since: start / 1000, until: (last + DAY) / 1000 });
   }
@@ -380,15 +384,15 @@ async function postInsights(id: string) {
 const FEED_FIELDS = "id,message,story,created_time,permalink_url,full_picture,status_type,shares";
 const COUNT_FIELDS = "reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)";
 
-/** The latest posts, newest first, with their lifetime numbers. */
+/** The latest posts (up to 100, the most Facebook sends at once), newest first, with their lifetime numbers. */
 export async function getPosts(count = 25): Promise<Post[]> {
   let data: FeedItem[];
   try {
-    ({ data } = await graph<{ data: FeedItem[] }>("{page}/posts", { fields: `${FEED_FIELDS},${COUNT_FIELDS}`, limit: count }));
+    ({ data } = await graph<{ data: FeedItem[] }>("{page}/posts", { fields: `${FEED_FIELDS},${COUNT_FIELDS}`, limit: Math.min(count, 100) }));
   } catch (e) {
     // 10 / 200: reactions or comments need a permission we weren't given; show the posts without them.
     if (!(e instanceof FacebookError) || (e.code !== 10 && e.code !== 200)) throw e;
-    ({ data } = await graph<{ data: FeedItem[] }>("{page}/posts", { fields: FEED_FIELDS, limit: count }));
+    ({ data } = await graph<{ data: FeedItem[] }>("{page}/posts", { fields: FEED_FIELDS, limit: Math.min(count, 100) }));
   }
   return mapLimit(data, 6, async (m) => {
     const i = await postInsights(m.id).catch(() => ({ views: 0, reach: 0, clicks: 0 }));

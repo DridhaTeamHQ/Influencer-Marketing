@@ -241,10 +241,15 @@ type InsightRow = {
   values?: { value: number; end_time: string }[];
 };
 
-/** Instagram allows at most 30 days per insights call, so longer ranges are fetched in pieces. */
+/**
+ * Instagram allows at most 30 days per insights call, so longer ranges are fetched in pieces. It
+ * keeps insights for 2 years and rejects older dates (which would look like a missing metric), so
+ * those days are left out.
+ */
 function windows(from: string, to: string) {
   const out: { since: number; until: number; from: string; to: string }[] = [];
-  for (let start = Date.parse(`${from}T00:00:00Z`), end = Date.parse(`${to}T00:00:00Z`); start <= end; start += 30 * DAY) {
+  const oldest = Date.now() - 2 * 365 * DAY + DAY;
+  for (let start = Math.max(Date.parse(`${from}T00:00:00Z`), Date.parse(`${isoDay(new Date(oldest))}T00:00:00Z`)), end = Date.parse(`${to}T00:00:00Z`); start <= end; start += 30 * DAY) {
     const last = Math.min(start + 29 * DAY, end);
     out.push({ since: start / 1000, until: (last + DAY) / 1000, from: isoDay(new Date(start)), to: isoDay(new Date(last)) });
   }
@@ -440,12 +445,19 @@ async function postInsights(id: string): Promise<Record<string, number>> {
   return {};
 }
 
-/** The latest posts, newest first, with their lifetime numbers. */
+/** The latest posts, newest first, with their lifetime numbers. Pages through when `count` is over 100. */
 export async function getPosts(count = 30): Promise<Post[]> {
-  const { data } = await graph<{ data: MediaItem[] }>("me/media", {
-    fields: "id,caption,media_type,media_product_type,permalink,thumbnail_url,media_url,timestamp,like_count,comments_count",
-    limit: count,
-  });
+  const data: MediaItem[] = [];
+  let after: string | undefined;
+  do {
+    const page = await graph<{ data: MediaItem[]; paging?: { cursors?: { after?: string }; next?: string } }>("me/media", {
+      fields: "id,caption,media_type,media_product_type,permalink,thumbnail_url,media_url,timestamp,like_count,comments_count",
+      limit: Math.min(count - data.length, 100),
+      ...(after && { after }),
+    });
+    data.push(...page.data);
+    after = page.paging?.next ? page.paging.cursors?.after : undefined;
+  } while (after && data.length < count);
   return mapLimit(data, 6, async (m) => {
     const i = await postInsights(m.id).catch(() => ({}) as Record<string, number>);
     const likes = i.likes ?? m.like_count ?? 0;

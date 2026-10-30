@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { connection } from "next/server";
 import {
   EyeIcon,
@@ -20,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AiTrending, AiTrendingSkeleton } from "@/components/social/ai-trending";
 import { percentChange } from "@/lib/analytics";
 import { formatCompact, formatNumber, timeAgo } from "@/lib/format";
 import { routes } from "@/lib/routes";
@@ -138,7 +140,7 @@ export async function FacebookDashboard({
         )}
       </PageHeader>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard icon={<UsersIcon />} accent="ios" label="Followers" value={formatNumber(page.followers)} hint="Right now" />
         <StatCard icon={<ThumbsUpIcon />} accent="android" label="Page likes" value={formatNumber(page.likes)} hint="Right now" />
         <StatCard
@@ -148,6 +150,9 @@ export async function FacebookDashboard({
           value={formatNumber(page.talkingAbout)}
           hint="People who interacted in the last 7 days"
         />
+        <Suspense fallback={<AiTrendingSkeleton />}>
+          <AiTrending platform="facebook" />
+        </Suspense>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">

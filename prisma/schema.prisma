@@ -319,3 +319,23 @@ model ReelSnapshot {
 
   @@index([reelId, fetchedAt])
 }
+
+enum AiReportKind {
+  /// Which of our posts went viral, by category.
+  CONTENT
+  /// Topics growing on each platform, from web search.
+  TRENDS
+}
+
+/// One run of an AI agent on the AI trends page: every Monday by the cron, or from the button.
+model AiReport {
+  id        String       @id @default(cuid())
+  kind      AiReportKind
+  /// "weekly" (cron) or "manual" (button).
+  trigger   String
+  /// The whole report, as the page shows it.
+  data      Json
+  createdAt DateTime     @default(now())
+
+  @@index([kind, createdAt])
+}

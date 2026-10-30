@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { connection } from "next/server";
 import {
   ClockIcon,
@@ -21,6 +22,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AiTrending, AiTrendingSkeleton } from "@/components/social/ai-trending";
 import { percentChange } from "@/lib/analytics";
 import { formatCompact, formatNumber, timeAgo } from "@/lib/format";
 import { routes } from "@/lib/routes";
@@ -150,7 +152,7 @@ export async function YoutubeDashboard({
         </form>
       </PageHeader>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           icon={<UsersIcon />}
           accent="ios"
@@ -160,6 +162,9 @@ export async function YoutubeDashboard({
         />
         <StatCard icon={<EyeIcon />} accent="android" label="Lifetime views" value={formatNumber(channel.views)} hint="All videos, all time" />
         <StatCard icon={<PlayIcon />} accent="others" label="Videos" value={formatNumber(channel.videos)} hint="Public uploads" />
+        <Suspense fallback={<AiTrendingSkeleton />}>
+          <AiTrending platform="youtube" />
+        </Suspense>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">

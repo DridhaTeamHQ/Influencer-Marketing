@@ -2,10 +2,10 @@ import { SocialTabs } from "@/components/social/social-tabs";
 import { routes } from "@/lib/routes";
 
 const tabs = [
+  { href: routes.social, label: "Overview", exact: true },
   { href: routes.instagram, label: "Instagram" },
   { href: routes.facebook, label: "Facebook" },
   { href: routes.youtube, label: "YouTube" },
-  { href: routes.linkedinPage, label: "LinkedIn" },
 ];
 
 export default function SocialLayout({ children }: { children: React.ReactNode }) {

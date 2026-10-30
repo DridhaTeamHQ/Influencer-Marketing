@@ -1,12 +1,18 @@
 import { daysAgo, isoDay } from "@/lib/stores/shared";
 
-/** Quick ranges on the store pages. Store reports lag a day, so they all end yesterday. */
+/** Quick ranges on the store and social pages. Reports lag a day, so they all end yesterday. */
 export const STORE_RANGES = {
   "7d": { days: 7, label: "Week" },
   "30d": { days: 30, label: "Month" },
   "90d": { days: 90, label: "3 months" },
   "180d": { days: 180, label: "6 months" },
+  "365d": { days: 365, label: "1 year" },
+  /** From ALL_TIME_FROM; `days` is worked out from it. */
+  all: { days: null, label: "All time" },
 } as const;
+
+/** Where "All time" starts: before 2026 our stores and social accounts have (almost) no data. */
+export const ALL_TIME_FROM = "2026-01-01";
 
 export type StoreRangeKey = keyof typeof STORE_RANGES;
 
@@ -39,7 +45,8 @@ export function parseStoreRange(params: Record<string, string | string[] | undef
   } else {
     if (typeof params.range === "string" && params.range in STORE_RANGES) key = params.range as StoreRangeKey;
     to = daysAgo(1);
-    from = daysAgo(STORE_RANGES[key as StoreRangeKey].days);
+    const quickDays = STORE_RANGES[key as StoreRangeKey].days;
+    from = quickDays === null ? ALL_TIME_FROM : daysAgo(quickDays);
   }
 
   const days = Math.round((Date.parse(to) - Date.parse(from)) / DAY) + 1;
