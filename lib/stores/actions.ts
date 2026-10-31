@@ -127,13 +127,17 @@ export async function importReferralCodes(_prev: ImportState, formData: FormData
   try {
     const { total, codes, used } = parseReferralCodesCsv(decodeCsv(new Uint8Array(await file.arrayBuffer())));
     const note = `${codes} codes, ${used} used`;
+    // Downloads are saved later, once both stores have published every day up to `day`.
     await prisma.referralDownload.upsert({
       where: { date: dbDate(day) },
       create: { date: dbDate(day), count: total, note },
-      update: { count: total, note },
+      update: { count: total, downloads: null, note },
     });
     refreshStorePages();
-    return { ok: true, message: `Total usage ${total.toLocaleString("en")} saved for ${day} (${note}).` };
+    return {
+      ok: true,
+      message: `Total usage ${total.toLocaleString("en")} saved for ${day} (${note}). It shows on App Stores once Play Store and App Store data reach ${day}.`,
+    };
   } catch (error) {
     return { ok: false, message: errorMessage(error) };
   }

@@ -630,32 +630,52 @@ export type ReferralPoint = {
   withoutReferral: number;
 };
 
-/** First-time downloads per day for both stores, from the same reports as the Downloads card. */
-async function firstTimeDownloads(to: string) {
-  const allTime = { from: "2000-01-01", to };
-  const installs: Source = { report: "play_installs", split: "TOTAL" };
-  const hasInstalls = await hasRows("GOOGLE_PLAY", installs);
-  const play = hasInstalls ? installs : ({ report: "play_store_listing", split: "SOURCE" } as const);
-  const [playDays, appleDays] = await Promise.all([
-    perDay("GOOGLE_PLAY", play, allTime),
-    perDay("APP_STORE", { report: "apple_sales", split: "COUNTRY" }, allTime),
-  ]);
-  const days = new Map<string, number>();
-  for (const map of [playDays, appleDays]) for (const [day, t] of map) days.set(day, (days.get(day) ?? 0) + t.downloads);
-  return { days, accuracy: (hasInstalls ? "exact" : "estimate") as Accuracy };
+const PLAY_INSTALLS: Source = { report: "play_installs", split: "TOTAL" };
+
+/** Which Play report the downloads come from: installs once Google publishes them, else listing acquisitions. */
+async function playDownloadsSource() {
+  const hasInstalls = await hasRows("GOOGLE_PLAY", PLAY_INSTALLS);
+  return {
+    play: hasInstalls ? PLAY_INSTALLS : ({ report: "play_store_listing", split: "SOURCE" } as const),
+    accuracy: (hasInstalls ? "exact" : "estimate") as Accuracy,
+  };
 }
 
-/** Every upload (oldest first) with referral vs without-referral downloads as of its date. */
+const APPLE_SALES: Source = { report: "apple_sales", split: "COUNTRY" };
+
+/** First-time downloads, both stores, up to and including `day`, from the same reports as the Downloads card. */
+async function downloadsUpTo(play: Source, day: string) {
+  const allTime = { from: "2000-01-01", to: day };
+  const [p, a] = await Promise.all([sum("GOOGLE_PLAY", play, allTime), sum("APP_STORE", APPLE_SALES, allTime)]);
+  return p.downloads + a.downloads;
+}
+
+/**
+ * Uploads (oldest first) with referral vs without-referral downloads as of their date. The
+ * referral count covers every day up to the upload, but the stores publish days late (Play ~3–4,
+ * Apple ~1), so an upload stays hidden until both stores have reached its date. Its downloads are
+ * saved then, so late data can't change them afterwards.
+ */
 export async function getReferralReport() {
   const uploads = await prisma.referralDownload.findMany({ orderBy: { date: "asc" } });
-  if (!uploads.length) return { points: [] as ReferralPoint[], latest: null };
 
-  const { days, accuracy } = await firstTimeDownloads(isoDay(uploads.at(-1)!.date));
+  const { play, accuracy } = await playDownloadsSource();
+  const [playLast, appleLast] = await Promise.all([
+    prisma.storeStat.aggregate({ where: where("GOOGLE_PLAY", play), _max: { date: true } }),
+    prisma.storeStat.aggregate({ where: where("APP_STORE", APPLE_SALES), _max: { date: true } }),
+  ]);
+  // The last day both stores have published.
+  const through = playLast._max.date && appleLast._max.date ? isoDay(new Date(Math.min(+playLast._max.date, +appleLast._max.date))) : null;
+
   const points: ReferralPoint[] = [];
   for (const u of uploads) {
     const date = isoDay(u.date);
-    let downloads = 0;
-    for (const [day, n] of days) if (day <= date) downloads += n;
+    let downloads = u.downloads;
+    if (downloads === null) {
+      if (!through || through < date) continue;
+      downloads = await downloadsUpTo(play, date);
+      await prisma.referralDownload.update({ where: { date: u.date }, data: { downloads } });
+    }
     const referral = Math.max(0, u.count - REFERRAL_USAGE_OFFSET);
     points.push({
       date,
@@ -666,7 +686,7 @@ export async function getReferralReport() {
       withoutReferral: Math.max(0, downloads - referral),
     });
   }
-  return { points, latest: points.at(-1)! };
+  return { points, latest: points.at(-1) ?? null };
 }
 
 /** The all-time deletions typed in from App Store Connect, and how many of them Apple's report leaves out. */

@@ -565,7 +565,7 @@ function ReferralSection({ points, latest }: { points: ReferralPoint[]; latest: 
         <CardDescription>
           {latest
             ? `First-time downloads (both stores) up to ${shortDate(latest.date)}, the date of the latest referral CSV`
-            : "Upload the referral codes CSV on the Import page to split downloads into referral and without referral"}
+            : "Upload the referral codes CSV on the Import page to split downloads into referral and without referral. An upload shows here once both stores’ data reach its date."}
         </CardDescription>
       </CardHeader>
 

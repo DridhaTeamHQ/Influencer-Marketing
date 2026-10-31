@@ -300,6 +300,9 @@ model SocialConnection {
 model ReferralDownload {
   date      DateTime @id @db.Date
   count     Int
+  /// First-time downloads (both stores) up to `date`. Null until both stores have published every
+  /// day up to `date`; saved then and kept fixed so late store data doesn't change it.
+  downloads Int?
   note      String?
   updatedAt DateTime @updatedAt
 }
